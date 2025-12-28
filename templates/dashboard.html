@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Timetable Generator{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Welcome, {{ current_user.username }}</h1>
+    <p class="mt-2 text-gray-600">Manage and generate timetables for your polytechnic college.</p>
+</div>
+
+<!-- Stats Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="card bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="rounded-full bg-blue-100 p-3">
+                <i class="fas fa-building text-blue-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Departments</p>
+                <p class="text-2xl font-semibold text-gray-900">{{ dept_count }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="rounded-full bg-green-100 p-3">
+                <i class="fas fa-users text-green-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Classes</p>
+                <p class="text-2xl font-semibold text-gray-900">{{ class_count }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="rounded-full bg-purple-100 p-3">
+                <i class="fas fa-chalkboard-teacher text-purple-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Faculty</p>
+                <p class="text-2xl font-semibold text-gray-900">{{ faculty_count }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="rounded-full bg-yellow-100 p-3">
+                <i class="fas fa-book text-yellow-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Subjects</p>
+                <p class="text-2xl font-semibold text-gray-900">{{ subject_count }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <!-- Recent Classes -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Recent Classes</h3>
+        </div>
+        <div class="p-6">
+            <div class="flow-root">
+                <ul class="divide-y divide-gray-200">
+                    {% for class in recent_classes %}
+                    <li class="py-4">
+                        <div class="flex items-center space-x-4">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900 truncate">
+                                    {{ class.name }} ({{ class.code }})
+                                </p>
+                                <p class="text-sm text-gray-500">
+                                    {{ class.department.name }} • Year {{ class.year }} • Sem {{ class.semester }}
+                                </p>
+                            </div>
+                            <div>
+                                <a href="{{ url_for('manage_class_subjects', class_id=class.id) }}" 
+                                   class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-primary-700 bg-primary-100 hover:bg-primary-200">
+                                    Manage Subjects
+                                </a>
+                            </div>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Links -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Quick Actions</h3>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-2 gap-4">
+                <a href="{{ url_for('generate_timetable') }}" class="flex flex-col items-center justify-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-cogs text-primary-600 text-2xl mb-2"></i>
+                    <span class="text-sm font-medium text-gray-900">Generate Timetable</span>
+                </a>
+                <a href="{{ url_for('manage_classes') }}" class="flex flex-col items-center justify-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-users text-green-600 text-2xl mb-2"></i>
+                    <span class="text-sm font-medium text-gray-900">Add New Class</span>
+                </a>
+                <a href="{{ url_for('manage_faculty') }}" class="flex flex-col items-center justify-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-chalkboard-teacher text-purple-600 text-2xl mb-2"></i>
+                    <span class="text-sm font-medium text-gray-900">Add Faculty</span>
+                </a>
+                <a href="{{ url_for('view_timetable') }}" class="flex flex-col items-center justify-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-calendar text-yellow-600 text-2xl mb-2"></i>
+                    <span class="text-sm font-medium text-gray-900">View Timetable</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Instructions -->
+<div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+    <h3 class="text-lg font-medium text-blue-900 mb-2">How to Generate a Timetable</h3>
+    <ol class="list-decimal list-inside space-y-2 text-blue-800">
+        <li>Add Departments, Faculty, Rooms, and Subjects</li>
+        <li>Create Classes and their batches (TB1, TB2, TB3)</li>
+        <li>Assign subjects to classes with faculty and weekly hours</li>
+        <li>Assign mentors to each batch</li>
+        <li>Go to Generate Timetable and select a class</li>
+        <li>View the generated timetable</li>
+    </ol>
+</div>
+{% endblock %}

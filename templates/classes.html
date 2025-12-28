@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Classes - Timetable Generator{% endblock %}
+{% block page_title %}Classes Management{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h2 class="text-2xl font-bold text-gray-900">Classes</h2>
+    <p class="mt-1 text-gray-600">Manage classes and their batches (TB1, TB2, TB3).</p>
+</div>
+
+<!-- Add Class Form -->
+<div class="bg-white rounded-lg shadow p-6 mb-8">
+    <h3 class="text-lg font-medium text-gray-900 mb-4">Add New Class</h3>
+    <form method="POST" action="{{ url_for('add_class') }}">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700">Class Name</label>
+                <input type="text" id="name" name="name" required
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                       placeholder="e.g., Computer Engineering">
+            </div>
+            <div>
+                <label for="code" class="block text-sm font-medium text-gray-700">Class Code</label>
+                <input type="text" id="code" name="code" required
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                       placeholder="e.g., CO-1">
+            </div>
+            <div>
+                <label for="year" class="block text-sm font-medium text-gray-700">Year</label>
+                <select id="year" name="year" required
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                    <option value="">Select Year</option>
+                    <option value="FY">First Year (FY)</option>
+                    <option value="SY">Second Year (SY)</option>
+                    <option value="TY">Third Year (TY)</option>
+                </select>
+            </div>
+            <div>
+                <label for="department_id" class="block text-sm font-medium text-gray-700">Department</label>
+                <select id="department_id" name="department_id" required
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                    <option value="">Select Department</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.id }}">{{ dept.name }} ({{ dept.code }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="semester" class="block text-sm font-medium text-gray-700">Semester</label>
+                <select id="semester" name="semester" required
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                    <option value="">Select Semester</option>
+                    {% for i in semesters %}
+                    <option value="{{ i }}">Semester {{ i }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="strength" class="block text-sm font-medium text-gray-700">Class Strength</label>
+                <input type="number" id="strength" name="strength" value="60"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
+            </div>
+        </div>
+        <div class="mt-6">
+            <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
+                <i class="fas fa-plus mr-2"></i>Add Class & Create Batches (TB1, TB2, TB3)
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Classes Table -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-medium text-gray-900">All Classes</h3>
+    </div>
+    {% if classes %}
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year/Sem</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Strength</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batches</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for class in classes %}
+                <tr>
+                    <td class="px-6 py-4">
+                        <div class="font-medium">{{ class.name }}</div>
+                        <div class="text-sm text-gray-500">{{ class.code }}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-sm">{{ class.department.name }}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                            Year {{ class.year }} • Sem {{ class.semester }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        {{ class.strength }} students
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex space-x-1">
+                            {% for batch in class.batches[:3] %}
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                {{ batch.name }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex space-x-2">
+                            <a href="{{ url_for('manage_class_subjects', class_id=class.id) }}"
+                               class="text-primary-600 hover:text-primary-900 text-sm">
+                                <i class="fas fa-book mr-1"></i>Subjects
+                            </a>
+                            <a href="{{ url_for('manage_batch_mentors', class_id=class.id) }}"
+                               class="text-yellow-600 hover:text-yellow-900 text-sm">
+                                <i class="fas fa-user-tie mr-1"></i>Mentors
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="p-6 text-center text-gray-500">
+        No classes found. Add your first class!
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

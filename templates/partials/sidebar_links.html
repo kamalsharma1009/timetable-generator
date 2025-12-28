@@ -1,0 +1,33 @@
+<!-- templates/partials/sidebar_links.html -->
+<a href="{{ url_for('dashboard') }}" class="sidebar-link group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'dashboard' %}active{% endif %}">
+    <i class="fas fa-tachometer-alt text-gray-500 mr-3 flex-shrink-0"></i>
+    Dashboard
+</a>
+<a href="{{ url_for('manage_departments') }}" class="sidebar-link group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'manage_departments' %}active{% endif %}">
+    <i class="fas fa-building text-gray-500 mr-3 flex-shrink-0"></i>
+    Departments
+</a>
+<a href="{{ url_for('manage_classes') }}" class="sidebar-link group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'manage_classes' %}active{% endif %}">
+    <i class="fas fa-users text-gray-500 mr-3 flex-shrink-0"></i>
+    Classes
+</a>
+<a href="{{ url_for('manage_subjects') }}" class="sidebar-link group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'manage_subjects' %}active{% endif %}">
+    <i class="fas fa-book text-gray-500 mr-3 flex-shrink-0"></i>
+    Subjects
+</a>
+<a href="{{ url_for('manage_faculty') }}" class="sidebar-link group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'manage_faculty' %}active{% endif %}">
+    <i class="fas fa-chalkboard-teacher text-gray-500 mr-3 flex-shrink-0"></i>
+    Faculty
+</a>
+<a href="{{ url_for('manage_rooms') }}" class="sidebar-link group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'manage_rooms' %}active{% endif %}">
+    <i class="fas fa-door-open text-gray-500 mr-3 flex-shrink-0"></i>
+    Rooms/Labs
+</a>
+<a href="{{ url_for('generate_timetable') }}" class="sidebar-link group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'generate_timetable' %}active{% endif %}">
+    <i class="fas fa-cogs text-gray-500 mr-3 flex-shrink-0"></i>
+    Generate Timetable
+</a>
+<a href="{{ url_for('view_timetable') }}" class="sidebar-link group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'view_timetable' %}active{% endif %}">
+    <i class="fas fa-calendar text-gray-500 mr-3 flex-shrink-0"></i>
+    View Timetable
+</a>

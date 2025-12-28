@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Departments - Timetable Generator{% endblock %}
+{% block page_title %}Departments Management{% endblock %}
+
+{% block content %}
+<div class="mb-8 flex justify-between items-center">
+    <div>
+        <h2 class="text-2xl font-bold text-gray-900">Departments</h2>
+        <p class="mt-1 text-gray-600">Manage academic departments in your college.</p>
+    </div>
+    <button onclick="toggleAddForm()" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
+        <i class="fas fa-plus mr-2"></i>Add Department
+    </button>
+</div>
+
+<!-- Add Department Form -->
+<div id="addForm" class="hidden mb-8 bg-white rounded-lg shadow p-6">
+    <h3 class="text-lg font-medium text-gray-900 mb-4">Add New Department</h3>
+    <form method="POST" action="{{ url_for('add_department') }}">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="code" class="block text-sm font-medium text-gray-700">Department Code</label>
+                <input type="text" id="code" name="code" required
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
+            </div>
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700">Department Name</label>
+                <input type="text" id="name" name="name" required
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
+            </div>
+            <div class="md:col-span-2">
+                <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                <textarea id="description" name="description" rows="3"
+                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"></textarea>
+            </div>
+        </div>
+        <div class="mt-6 flex justify-end space-x-3">
+            <button type="button" onclick="toggleAddForm()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                Cancel
+            </button>
+            <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
+                Add Department
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Departments Table -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-medium text-gray-900">All Departments</h3>
+    </div>
+    {% if departments %}
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for dept in departments %}
+                <tr>
+                    <td class="px-6 py-4">
+                        <span class="font-medium">{{ dept.code }}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="font-medium">{{ dept.name }}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-sm text-gray-500">{{ dept.description or '—' }}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <a href="{{ url_for('delete_department', id=dept.id) }}" 
+                           onclick="return confirmDelete('Delete department {{ dept.name }}?')"
+                           class="text-red-600 hover:text-red-900">
+                            <i class="fas fa-trash"></i> Delete
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="p-6 text-center text-gray-500">
+        No departments found. Add your first department!
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function toggleAddForm() {
+    const form = document.getElementById('addForm');
+    form.classList.toggle('hidden');
+}
+</script>
+{% endblock %}
