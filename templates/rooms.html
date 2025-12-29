@@ -37,7 +37,7 @@
             </div>
             <div>
                 <label for="capacity" class="block text-sm font-medium text-gray-700">Capacity</label>
-                <input type="number" id="capacity" name="capacity" required
+                <input type="number" id="capacity" name="capacity" required min="1"
                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
                        placeholder="e.g., 60">
             </div>
@@ -111,7 +111,13 @@
                         {% endif %}
                     </td>
                     <td class="px-6 py-4">
-                        <div class="text-sm text-gray-500">{{ room.equipment|truncate(50) or '—' }}</div>
+                        <div class="text-sm text-gray-500">
+                            {% if room.equipment %}
+                                {{ room.equipment[:50] }}{% if room.equipment|length > 50 %}...{% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
