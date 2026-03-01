@@ -72,23 +72,31 @@
                 </div>
             </div>
             
-            <div class="flex space-x-2">
-                {% if class.subjects|length > 0 %}
-                <a href="{{ url_for('run_timetable_generation', class_id=class.id) }}" 
-                   class="flex-1 px-4 py-2 bg-green-600 text-white text-center rounded-md hover:bg-green-700">
-                    Generate
-                </a>
-                {% else %}
-                <a href="{{ url_for('manage_class_subjects', class_id=class.id) }}" 
-                   class="flex-1 px-4 py-2 bg-yellow-600 text-white text-center rounded-md hover:bg-yellow-700">
-                    Assign Subjects First
-                </a>
-                {% endif %}
-                <a href="{{ url_for('view_timetable', class_id=class.id) }}" 
-                   class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
-                    View
-                </a>
-            </div>
+<div class="flex space-x-2">
+
+    <a href="{{ url_for('manage_class_subjects', class_id=class.id) }}" 
+       class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+        Subjects
+    </a>
+
+    <a href="{{ url_for('manage_batch_mentors', class_id=class.id) }}" 
+       class="px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm">
+        Mentors
+    </a>
+
+    {% if class.subjects|length > 0 %}
+    <a href="{{ url_for('run_timetable_generation', class_id=class.id) }}" 
+       class="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
+        Generate
+    </a>
+    {% endif %}
+
+    <a href="{{ url_for('view_timetable', class_id=class.id) }}" 
+       class="px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm">
+        View
+    </a>
+
+</div>
         </div>
         {% endfor %}
     </div>

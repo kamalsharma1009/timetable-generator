@@ -104,8 +104,8 @@
                         {{ room.capacity }} seats
                     </td>
                     <td class="px-6 py-4">
-                        {% if room.department %}
-                            {{ room.department.name }}
+                        {% if room.department_id %}
+                            {{ room.department_id }}
                         {% else %}
                             <span class="text-gray-400">Common</span>
                         {% endif %}

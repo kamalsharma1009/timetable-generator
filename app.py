@@ -19,13 +19,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Timetable settings
 app.config['DAYS'] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 app.config['TIME_SLOTS'] = [
-    ('09:40', '10:40'),
-    ('10:50', '11:50'),
-    ('11:50', '12:40'),  # Lunch break
-    ('12:40', '13:40'),
-    ('13:50', '14:50'),
-    ('15:00', '16:00'),
-    ('16:10', '17:10')
+            ('09:40', '10:40'),
+            ('10:40', '11:40'),
+            ('11:40', '12:40'),
+            ('12:40', '13:10'),  # Lunch Break
+            ('13:10', '14:10'),
+            ('14:10', '15:10'),
+            ('15:10', '15:20'),  # Short Break
+            ('15:20', '16:20'),
+            ('16:20', '17:20')
 ]
 app.config['LECTURE_SLOT_INDICES'] = [0, 1, 3, 4, 5, 6]
 app.config['PRACTICAL_SLOTS'] = [('14:00', '16:00'), ('15:00', '17:10')]
@@ -152,9 +154,11 @@ class Timetable(db.Model):
     start_time = db.Column(db.String(10), nullable=False)
     end_time = db.Column(db.String(10), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'))
+    subject = db.relationship('Subject')
     faculty_id = db.Column(db.Integer, db.ForeignKey('faculty.id'))
     room_id = db.Column(db.Integer, db.ForeignKey('room.id'))
     batch_id = db.Column(db.Integer, db.ForeignKey('batch.id'))
+    batch = db.relationship('Batch')
     session_type = db.Column(db.String(20), nullable=False)  # Lecture, Practical, Mentoring, Break
     is_break = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -193,14 +197,16 @@ class GeneticAlgorithmTimetable:
         self.class_id = class_id
         self.class_obj = Class.query.get(class_id)
         self.days = app.config['DAYS']
-        self.time_slots = [
-            (0, '09:40', '10:40', False),   # Slot 1
-            (1, '10:50', '11:50', False),   # Slot 2
-            (2, '11:50', '12:40', True),    # Lunch break
-            (3, '12:40', '13:40', False),   # Slot 3
-            (4, '13:50', '14:50', False),   # Slot 4
-            (5, '15:00', '16:00', False),   # Slot 5
-            (6, '16:10', '17:10', False)    # Slot 6
+        app.config['TIME_SLOTS'] = [
+            ('09:40', '10:40'),
+            ('10:40', '11:40'),
+            ('11:40', '12:40'),
+            ('12:40', '13:10'),  # Lunch Break
+            ('13:10', '14:10'),
+            ('14:10', '15:10'),
+            ('15:10', '15:20'),  # Short Break
+            ('15:20', '16:20'),
+            ('16:20', '17:20')
         ]
         self.lecture_slots = app.config['LECTURE_SLOT_INDICES']
         
@@ -208,14 +214,19 @@ class GeneticAlgorithmTimetable:
         self.class_subjects = ClassSubject.query.filter_by(class_id=class_id).all()
         self.batches = Batch.query.filter_by(class_id=class_id).all()
         self.faculty_list = Faculty.query.all()
-        self.rooms = Room.query.all()
+        dept_id = self.class_obj.department_id
+
+        self.rooms = Room.query.filter_by(department_id=dept_id).all()
+
         self.classrooms = [r for r in self.rooms if r.room_type == 'Classroom']
         self.labs = [r for r in self.rooms if r.room_type == 'Lab']
         
         if not self.classrooms:
-            self.classrooms = [Room(room_number='Default Classroom', room_type='Classroom', capacity=60)]
+            raise Exception("No classrooms available for this department")
+
         if not self.labs:
-            self.labs = [Room(room_number='Default Lab', room_type='Lab', capacity=40)]
+            raise Exception("No labs available for this department")
+
         
         # Initialize population
         self.population = []
@@ -239,7 +250,11 @@ class GeneticAlgorithmTimetable:
                     lecture_count = class_subject.lecture_slots_per_week
                     scheduled = 0
                     
-                    while scheduled < lecture_count:
+                    attempts = 0
+                    max_attempts_per_subject = 50
+
+                    while scheduled < lecture_count and attempts < max_attempts_per_subject:
+                        attempts += 1
                         day = random.choice(self.days)
                         slot_idx = random.choice(self.lecture_slots)
                         
@@ -270,14 +285,19 @@ class GeneticAlgorithmTimetable:
                             'session_type': 'Lecture'
                         })
                         scheduled += 1
-                
+                    if scheduled < lecture_count:
+                        print("Warning: Could not schedule all lectures")
                 # 2. Schedule practicals for each batch
                 for batch in self.batches:
                     for class_subject in self.class_subjects:
                         practical_count = class_subject.practical_slots_per_week
                         scheduled = 0
                         
-                        while scheduled < practical_count:
+                        attempts = 0
+                        max_attempts_per_subject = 50
+
+                        while scheduled < practical_count and attempts < max_attempts_per_subject:
+                            attempts += 1
                             # Schedule 2-hour practical in afternoon
                             day = random.choice(self.days)
                             # Use slots 4-5 or 5-6 for practicals (afternoon)
@@ -315,7 +335,8 @@ class GeneticAlgorithmTimetable:
                                 'session_type': 'Practical'
                             })
                             scheduled += 1
-                
+                        if scheduled < practical_count:
+                            print("Warning: Could not schedule all practicals")
                 # 3. Schedule mentoring sessions
                 for batch in self.batches:
                     if batch.mentor_id:
@@ -476,9 +497,9 @@ class GeneticAlgorithmTimetable:
             actual_practical = subject_practical_hours.get(class_subject.subject_id, 0)
             
             if actual_lecture < required_lecture:
-                penalties += (required_lecture - actual_lecture) * 30
+                penalties += (required_lecture - actual_lecture) * 5
             if actual_practical < required_practical:
-                penalties += (required_practical - actual_practical) * 40
+                penalties += (required_practical - actual_practical) * 5
         
         # 4. Reward for having all batches with mentoring
         mentoring_count = len(individual['mentoring'])
@@ -531,62 +552,239 @@ class GeneticAlgorithmTimetable:
         
         return individual
     
-    def evolve(self, population_size=30, generations=50, mutation_rate=0.2, elite_size=5):
-        """Run genetic algorithm evolution"""
-        print(f"Starting GA evolution for class {self.class_obj.name}")
-        
-        # Initialize population
-        self.population = []
-        for i in range(population_size):
-            print(f"Creating individual {i+1}/{population_size}")
-            individual = self.create_individual()
-            self.population.append(individual)
-        
-        for generation in range(generations):
-            # Calculate fitness for each individual
-            fitness_scores = []
-            for individual in self.population:
-                fitness = self.calculate_fitness(individual)
-                fitness_scores.append((fitness, individual))
-            
-            # Sort by fitness
-            fitness_scores.sort(key=lambda x: x[0], reverse=True)
-            
-            # Update best solution
-            if fitness_scores[0][0] > self.best_fitness:
-                self.best_fitness = fitness_scores[0][0]
-                self.best_solution = copy.deepcopy(fitness_scores[0][1])
-                print(f"Generation {generation}: New best fitness = {self.best_fitness}")
-            
-            # Select elite
-            elites = [ind for _, ind in fitness_scores[:elite_size]]
-            
-            # Create next generation
-            next_generation = elites.copy()
-            
-            # Generate offspring
-            while len(next_generation) < population_size:
-                # Tournament selection
-                if len(fitness_scores) > 10:
-                    parent1 = random.choice(fitness_scores[:10])[1]
-                    parent2 = random.choice(fitness_scores[:10])[1]
+    def generate_structured_timetable(self):
+
+        Timetable.query.filter_by(class_id=self.class_id).delete()
+        db.session.commit()
+
+        import random
+
+        days = self.days.copy()
+        slots = app.config['TIME_SLOTS']
+
+        faculty_busy = {}
+        room_busy = {}
+        class_busy = {}
+
+        # ------------------------------------------------
+        # BREAKS
+        # ------------------------------------------------
+        for day in days:
+            for s, (start, end) in enumerate(slots):
+                if s == 3 or s == 6:
+                    db.session.add(Timetable(
+                        class_id=self.class_id,
+                        day=day,
+                        slot_number=s,
+                        start_time=start,
+                        end_time=end,
+                        session_type='Break',
+                        is_break=True
+                    ))
+                    class_busy[(day, s)] = True
+
+        db.session.commit()
+
+        # ------------------------------------------------
+        # PRACTICALS (BLOCK BASED - DIFFERENT SUBJECT PER BATCH)
+        # ------------------------------------------------
+
+        practical_blocks = [(0,1), (1,2), (4,5), (7,8)]
+
+        # Step 1: Create flat list of required practical sessions
+        practical_sessions = []
+
+        for cs in self.class_subjects:
+            for _ in range(cs.practical_slots_per_week):
+                practical_sessions.append(cs)
+
+        # Shuffle sessions
+        random.shuffle(practical_sessions)
+
+        # Step 2: Schedule in groups of batches
+        index = 0
+
+        while index < len(practical_sessions):
+
+            # Take up to number_of_batches subjects
+            group = practical_sessions[index:index+len(self.batches)]
+
+            if len(group) < len(self.batches):
+                break  # Not enough subjects left for full parallel block
+
+            random.shuffle(days)
+            random.shuffle(practical_blocks)
+
+            assigned = False
+
+            for day in days:
+
+                for (s1, s2) in practical_blocks:
+
+                    if s1 in [3,6] or s2 in [3,6]:
+                        continue
+
+                    if (day, s1) in class_busy or (day, s2) in class_busy:
+                        continue
+
+                    if len(self.labs) < len(self.batches):
+                        continue
+
+                    labs_ok = True
+                    faculty_ok = True
+
+                    for i, cs in enumerate(group):
+
+                        lab = self.labs[i]
+                        faculty_id = cs.faculty_id
+
+                        # Faculty clash?
+                        if (faculty_id, day, s1) in faculty_busy or \
+                        (faculty_id, day, s2) in faculty_busy:
+                            faculty_ok = False
+                            break
+
+                        # Room clash?
+                        if (lab.id, day, s1) in room_busy or \
+                        (lab.id, day, s2) in room_busy:
+                            labs_ok = False
+                            break
+
+                    if not labs_ok or not faculty_ok:
+                        continue
+
+                    # ASSIGN PRACTICAL BLOCK
+                    for i, cs in enumerate(group):
+
+                        batch = self.batches[i]
+                        lab = self.labs[i]
+                        faculty_id = cs.faculty_id
+
+                        for s in [s1, s2]:
+
+                            db.session.add(Timetable(
+                                class_id=self.class_id,
+                                day=day,
+                                slot_number=s,
+                                start_time=slots[s][0],
+                                end_time=slots[s][1],
+                                subject_id=cs.subject_id,
+                                faculty_id=faculty_id,
+                                room_id=lab.id,
+                                batch_id=batch.id,
+                                session_type='Practical',
+                                is_break=False
+                            ))
+
+                            faculty_busy[(faculty_id, day, s)] = True
+                            room_busy[(lab.id, day, s)] = True
+                            class_busy[(day, s)] = True
+
+                    assigned = True
+                    break
+
+                if assigned:
+                    break
+
+            if assigned:
+                index += len(self.batches)
+            else:
+                print("Could not place practical group safely")
+                break
+
+        db.session.commit()
+        # ------------------------------------------------
+        # SINGLE MENTORING PER WEEK
+        # ------------------------------------------------
+
+        mentoring_assigned = False
+        random.shuffle(days)
+
+        for day in days:
+            for s, (start, end) in enumerate(slots):
+
+                if s in [3,6]:
+                    continue
+
+                if (day, s) in class_busy:
+                    continue
+
+                db.session.add(Timetable(
+                    class_id=self.class_id,
+                    day=day,
+                    slot_number=s,
+                    start_time=start,
+                    end_time=end,
+                    session_type='Mentoring',
+                    is_break=False
+                ))
+
+                class_busy[(day, s)] = True
+                mentoring_assigned = True
+                break
+            if mentoring_assigned:
+                break
+
+        db.session.commit()
+
+        # ------------------------------------------------
+        # LECTURES (RANDOM SAFE)
+        # ------------------------------------------------
+        lecture_list = []
+        for cs in self.class_subjects:
+            for _ in range(cs.lecture_slots_per_week):
+                lecture_list.append(cs)
+
+        random.shuffle(lecture_list)
+
+        for cs in lecture_list:
+
+            random.shuffle(days)
+
+            for day in days:
+                for s, (start, end) in enumerate(slots):
+
+                    if s in [3,6]:
+                        continue
+
+                    if (day, s) in class_busy:
+                        continue
+
+                    if (cs.faculty_id, day, s) in faculty_busy:
+                        continue
+
+                    classroom = None
+                    for room in self.classrooms:
+                        if (room.id, day, s) not in room_busy:
+                            classroom = room
+                            break
+
+                    if classroom is None:
+                        continue
+
+                    db.session.add(Timetable(
+                        class_id=self.class_id,
+                        day=day,
+                        slot_number=s,
+                        start_time=start,
+                        end_time=end,
+                        subject_id=cs.subject_id,
+                        faculty_id=cs.faculty_id,
+                        room_id=classroom.id,
+                        session_type='Lecture',
+                        is_break=False
+                    ))
+
+                    faculty_busy[(cs.faculty_id, day, s)] = True
+                    room_busy[(classroom.id, day, s)] = True
+                    class_busy[(day, s)] = True
+
+                    break
                 else:
-                    parent1 = fitness_scores[0][1] if fitness_scores else self.create_individual()
-                    parent2 = fitness_scores[1][1] if len(fitness_scores) > 1 else self.create_individual()
-                
-                child = self.crossover(parent1, parent2)
-                
-                # Apply mutation
-                if random.random() < mutation_rate:
-                    child = self.mutate(child)
-                
-                next_generation.append(child)
-            
-            self.population = next_generation
-        
-        print(f"GA completed. Best fitness: {self.best_fitness}")
-        return self.best_solution
-    
+                    continue
+                break
+
+        db.session.commit()            
     def save_to_database(self, solution):
         """Save generated timetable to database"""
         # Clear existing timetable for this class
@@ -625,32 +823,34 @@ class GeneticAlgorithmTimetable:
             db.session.add(practical_slot)
             
             # Also add to timetable
-            timetable_entry = Timetable(
-                class_id=self.class_id,
-                day=practical['day'],
-                slot_number=practical['start_slot'],
-                start_time=practical['start_time'],
-                end_time=practical['end_time'],
-                subject_id=practical['subject_id'],
-                faculty_id=practical['faculty_id'],
-                room_id=practical['room_id'],
-                batch_id=practical['batch_id'],
-                session_type='Practical',
-                is_break=False
-            )
-            db.session.add(timetable_entry)
+            for slot in [practical['start_slot'], practical['end_slot']]:
+                timetable_entry = Timetable(
+                    class_id=self.class_id,
+                    day=practical['day'],
+                    slot_number=slot,
+                    start_time=self.time_slots[slot][1],
+                    end_time=self.time_slots[slot][2],
+                    subject_id=practical['subject_id'],
+                    faculty_id=practical['faculty_id'],
+                    room_id=practical['room_id'],
+                    batch_id=practical['batch_id'],
+                    session_type='Practical',
+                    is_break=False
+                )
+
+                db.session.add(timetable_entry)
         
         # Save mentoring
         for mentoring in solution['mentoring']:
             timetable_entry = Timetable(
                 class_id=self.class_id,
-                day=menturing['day'],
-                slot_number=menturing['slot_number'],
-                start_time=menturing['start_time'],
-                end_time=menturing['end_time'],
-                faculty_id=menturing['faculty_id'],
-                room_id=menturing['room_id'],
-                batch_id=menturing['batch_id'],
+                day=mentoring['day'],
+                slot_number=mentoring['slot_number'],
+                start_time=mentoring['start_time'],
+                end_time=mentoring['end_time'],
+                faculty_id=mentoring['faculty_id'],
+                room_id=mentoring['room_id'],
+                batch_id=mentoring['batch_id'],
                 session_type='Mentoring',
                 is_break=False
             )
@@ -1005,6 +1205,37 @@ def add_class_subject():
     flash('Subject assigned successfully', 'success')
     return redirect(url_for('manage_class_subjects', class_id=class_id))
 
+@app.route('/class-subjects/update/<int:id>', methods=['POST'])
+@login_required
+def update_class_subject(id):
+
+    class_subject = ClassSubject.query.get_or_404(id)
+
+    class_subject.faculty_id = request.form.get('faculty_id')
+    class_subject.lecture_slots_per_week = request.form.get('lecture_slots', type=int)
+    class_subject.practical_slots_per_week = request.form.get('practical_slots', type=int)
+
+    db.session.commit()
+
+    flash('Subject assignment updated successfully', 'success')
+    return redirect(url_for('manage_class_subjects', class_id=class_subject.class_id))
+
+
+
+@app.route('/class-subjects/delete/<int:id>')
+@login_required
+def delete_class_subject(id):
+
+    class_subject = ClassSubject.query.get_or_404(id)
+    class_id = class_subject.class_id
+
+    db.session.delete(class_subject)
+    db.session.commit()
+
+    flash('Subject assignment deleted successfully', 'success')
+    return redirect(url_for('manage_class_subjects', class_id=class_id))
+
+
 # Batch Mentors Assignment
 @app.route('/batch-mentors/<int:class_id>')
 @login_required
@@ -1059,20 +1290,15 @@ def run_timetable_generation(class_id):
         
         # Initialize and run genetic algorithm
         ga = GeneticAlgorithmTimetable(class_id)
-        solution = ga.evolve(population_size=20, generations=30)  # Reduced for speed
-        
-        if solution and ga.best_fitness > 0:
-            ga.save_to_database(solution)
-            flash('Timetable generated successfully!', 'success')
-        else:
-            flash('Failed to generate feasible timetable. Try adding more rooms or adjusting constraints.', 'error')
-    
+        ga.generate_structured_timetable()
+        flash('Structured timetable generated successfully!', 'success')
+
     except Exception as e:
         flash(f'Error generating timetable: {str(e)}', 'error')
         import traceback
         print(traceback.format_exc())
     
-    return redirect(url_for('view_timetable', class_id=class_id))
+    return redirect(url_for('view_timetable') + f'?class_id={class_id}')
 
 # View Timetable
 @app.route('/view-timetable')
@@ -1088,11 +1314,13 @@ def view_timetable():
         # Get timetable for selected class
         timetable_entries = Timetable.query.filter_by(class_id=class_id)\
             .order_by(Timetable.day, Timetable.slot_number).all()
-        
+        print("Timetable entries found:", len(timetable_entries))
+        for e in timetable_entries:
+            print("DAY:", e.day, "SLOT:", e.slot_number, "TYPE:", e.session_type)
         # Organize by day and slot
         timetable_data = {}
         days = app.config['DAYS']
-        slots = list(range(7))
+        slots = list(range(len(app.config['TIME_SLOTS'])))
         
         for day in days:
             timetable_data[day] = {}
