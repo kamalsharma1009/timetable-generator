@@ -158,24 +158,31 @@
                 {% else %}
                     {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] %}
                     <td>
-                        <div class="flex flex-col space-y-1">
-                        {% for entry in timetable_data[day][slot] %}
-                            
-                            {% if entry.session_type == 'Mentoring' %}
-                                <div class="font-bold">MENTORING</div>
-                            
-                            {% elif entry.session_type == 'Lecture' %}
-                                <div>{{ entry.subject.code }}</div>
-                            
-                            {% elif entry.session_type == 'Practical' %}
-                                <div class="text-[0.75rem] leading-tight font-semibold">
-                                    {{ entry.subject.code }}-{{ entry.batch.name }} 
-                                    ({% if entry.room_id %}{{ entry.room.room_number }}{% else %}LAB{% endif %})
+                        {% set entries = timetable_data[day][slot] %}
+                        {% if entries %}
+                            {# Mentoring: show once regardless of how many entries #}
+                            {% if entries[0].session_type == 'Mentoring' %}
+                                <div class="font-bold text-purple-700">MENTORING</div>
+
+                            {# Lecture: single entry #}
+                            {% elif entries[0].session_type == 'Lecture' %}
+                                <div class="font-semibold">{{ entries[0].subject.code }}</div>
+                                {% if entries[0].faculty_ref %}
+                                <div class="text-xs text-gray-500">{{ entries[0].faculty_ref.name }}</div>
+                                {% endif %}
+
+                            {# Practicals: multiple batch entries stacked #}
+                            {% elif entries[0].session_type == 'Practical' %}
+                                <div class="flex flex-col space-y-0.5">
+                                {% for entry in entries %}
+                                    <div class="text-[0.72rem] leading-tight font-semibold border-b border-gray-200 pb-0.5">
+                                        {{ entry.subject.code }}-{{ entry.batch.name }}
+                                        ({{ entry.room.room_number if entry.room_id else 'LAB' }})
+                                    </div>
+                                {% endfor %}
                                 </div>
                             {% endif %}
-                            
-                        {% endfor %}
-                        </div>
+                        {% endif %}
                     </td>
                     {% endfor %}
                 {% endif %}
