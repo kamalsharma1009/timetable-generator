@@ -1,10 +1,13 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, time
 import json
 import os
+import io
+import openpyxl
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 import random
 import copy
 from dotenv import load_dotenv
@@ -19,15 +22,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Timetable settings
 app.config['DAYS'] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 app.config['TIME_SLOTS'] = [
-            ('09:40', '10:40'),
+            ('9:40', '10:40'),
             ('10:40', '11:40'),
             ('11:40', '12:40'),
-            ('12:40', '13:10'),  # Lunch Break
-            ('13:10', '14:10'),
-            ('14:10', '15:10'),
-            ('15:10', '15:20'),  # Short Break
-            ('15:20', '16:20'),
-            ('16:20', '17:20')
+            ('12:40', '1:10'),  # Lunch Break
+            ('1:10', '2:10'),
+            ('2:10', '3:10'),
+            ('3:10', '3:20'),  # Short Break
+            ('3:20', '4:20'),
+            ('4:20', '5:20')
 ]
 app.config['LECTURE_SLOT_INDICES'] = [0, 1, 3, 4, 5, 6]
 app.config['PRACTICAL_SLOTS'] = [('14:00', '16:00'), ('15:00', '17:10')]
@@ -940,10 +943,33 @@ def add_department():
     flash('Department added successfully', 'success')
     return redirect(url_for('manage_departments'))
 
-@app.route('/departments/delete/<int:id>')
+@app.route('/departments/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_department(id):
+    department = Department.query.get_or_404(id)
+    code = request.form.get('code')
+    name = request.form.get('name')
+    description = request.form.get('description')
+    
+    existing = Department.query.filter_by(code=code).first()
+    if existing and existing.id != id:
+        flash('Department code already exists', 'error')
+        return redirect(url_for('manage_departments'))
+        
+    department.code = code
+    department.name = name
+    department.description = description
+    db.session.commit()
+    flash('Department updated successfully', 'success')
+    return redirect(url_for('manage_departments'))
+
+@app.route('/departments/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_department(id):
     department = Department.query.get_or_404(id)
+    if department.classes or department.faculty or Subject.query.filter_by(department_id=id).first() or Room.query.filter_by(department_id=id).first():
+        flash('Cannot delete department: It is assigned to classes, faculty, subjects, or rooms.', 'error')
+        return redirect(url_for('manage_departments'))
     db.session.delete(department)
     db.session.commit()
     flash('Department deleted successfully', 'success')
@@ -998,6 +1024,49 @@ def add_class():
     flash('Class and batches created successfully', 'success')
     return redirect(url_for('manage_classes'))
 
+@app.route('/classes/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_class(id):
+    class_obj = Class.query.get_or_404(id)
+    name = request.form.get('name')
+    code = request.form.get('code')
+    year = request.form.get('year')
+    department_id = request.form.get('department_id')
+    semester = request.form.get('semester')
+    strength = request.form.get('strength', 60)
+    
+    existing = Class.query.filter_by(code=code).first()
+    if existing and existing.id != id:
+        flash('Class code already exists', 'error')
+        return redirect(url_for('manage_classes'))
+        
+    class_obj.name = name
+    class_obj.code = code
+    class_obj.year = year
+    class_obj.department_id = department_id
+    class_obj.semester = semester
+    class_obj.strength = strength
+    db.session.commit()
+    flash('Class updated successfully', 'success')
+    return redirect(url_for('manage_classes'))
+
+@app.route('/classes/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_class(id):
+    class_obj = Class.query.get_or_404(id)
+    if class_obj.timetable:
+        flash('Cannot delete class: It has an active timetable generated.', 'error')
+        return redirect(url_for('manage_classes'))
+    
+    Batch.query.filter_by(class_id=id).delete()
+    ClassSubject.query.filter_by(class_id=id).delete()
+    PracticalSlot.query.filter_by(class_id=id).delete()
+    db.session.delete(class_obj)
+    db.session.commit()
+    flash('Class and its batches deleted successfully', 'success')
+    return redirect(url_for('manage_classes'))
+
+
 # Subject Management
 @app.route('/subjects')
 @login_required
@@ -1036,6 +1105,47 @@ def add_subject():
     
     flash('Subject added successfully', 'success')
     return redirect(url_for('manage_subjects'))
+
+@app.route('/subjects/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_subject(id):
+    subject = Subject.query.get_or_404(id)
+    code = request.form.get('code')
+    name = request.form.get('name')
+    type = request.form.get('type')
+    lecture_hours = request.form.get('lecture_hours', 0, type=int)
+    practical_hours = request.form.get('practical_hours', 0, type=int)
+    credits = request.form.get('credits', 3, type=int)
+    department_id = request.form.get('department_id')
+    
+    existing = Subject.query.filter_by(code=code).first()
+    if existing and existing.id != id:
+        flash('Subject code already exists', 'error')
+        return redirect(url_for('manage_subjects'))
+        
+    subject.code = code
+    subject.name = name
+    subject.type = type
+    subject.lecture_hours = lecture_hours
+    subject.practical_hours = practical_hours
+    subject.credits = credits
+    subject.department_id = department_id if department_id else None
+    db.session.commit()
+    flash('Subject updated successfully', 'success')
+    return redirect(url_for('manage_subjects'))
+
+@app.route('/subjects/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_subject(id):
+    subject = Subject.query.get_or_404(id)
+    if subject.class_subjects or Timetable.query.filter_by(subject_id=id).first():
+        flash('Cannot delete subject: It is assigned to classes or a timetable.', 'error')
+        return redirect(url_for('manage_subjects'))
+    db.session.delete(subject)
+    db.session.commit()
+    flash('Subject deleted successfully', 'success')
+    return redirect(url_for('manage_subjects'))
+
 
 # Faculty Management
 @app.route('/faculty')
@@ -1080,6 +1190,52 @@ def add_faculty():
     flash('Faculty added successfully', 'success')
     return redirect(url_for('manage_faculty'))
 
+@app.route('/faculty/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_faculty(id):
+    faculty = Faculty.query.get_or_404(id)
+    employee_id = request.form.get('employee_id')
+    name = request.form.get('name')
+    email = request.form.get('email')
+    phone = request.form.get('phone')
+    department_id = request.form.get('department_id')
+    designation = request.form.get('designation')
+    qualification = request.form.get('qualification')
+    
+    existing_emp = Faculty.query.filter_by(employee_id=employee_id).first()
+    if existing_emp and existing_emp.id != id:
+        flash('Employee ID already exists', 'error')
+        return redirect(url_for('manage_faculty'))
+        
+    existing_email = Faculty.query.filter_by(email=email).first()
+    if existing_email and existing_email.id != id:
+        flash('Email already exists', 'error')
+        return redirect(url_for('manage_faculty'))
+        
+    faculty.employee_id = employee_id
+    faculty.name = name
+    faculty.email = email
+    faculty.phone = phone
+    faculty.department_id = department_id if department_id else None
+    faculty.designation = designation
+    faculty.qualification = qualification
+    db.session.commit()
+    flash('Faculty updated successfully', 'success')
+    return redirect(url_for('manage_faculty'))
+
+@app.route('/faculty/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_faculty(id):
+    faculty = Faculty.query.get_or_404(id)
+    if faculty.class_subjects or faculty.mentored_batches or faculty.timetable_entries:
+        flash('Cannot delete faculty: They are assigned to subjects, batches, or a timetable.', 'error')
+        return redirect(url_for('manage_faculty'))
+    db.session.delete(faculty)
+    db.session.commit()
+    flash('Faculty deleted successfully', 'success')
+    return redirect(url_for('manage_faculty'))
+
+
 # Room Management
 @app.route('/rooms')
 @login_required
@@ -1114,6 +1270,43 @@ def add_room():
     
     flash('Room added successfully', 'success')
     return redirect(url_for('manage_rooms'))
+
+@app.route('/rooms/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_room(id):
+    room = Room.query.get_or_404(id)
+    room_number = request.form.get('room_number')
+    room_type = request.form.get('room_type')
+    capacity = request.form.get('capacity', type=int)
+    department_id = request.form.get('department_id')
+    equipment = request.form.get('equipment')
+    
+    existing = Room.query.filter_by(room_number=room_number).first()
+    if existing and existing.id != id:
+        flash('Room number already exists', 'error')
+        return redirect(url_for('manage_rooms'))
+        
+    room.room_number = room_number
+    room.room_type = room_type
+    room.capacity = capacity
+    room.department_id = department_id if department_id else None
+    room.equipment = equipment
+    db.session.commit()
+    flash('Room updated successfully', 'success')
+    return redirect(url_for('manage_rooms'))
+
+@app.route('/rooms/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_room(id):
+    room = Room.query.get_or_404(id)
+    if room.timetable_entries:
+        flash('Cannot delete room: It is used in an active timetable.', 'error')
+        return redirect(url_for('manage_rooms'))
+    db.session.delete(room)
+    db.session.commit()
+    flash('Room deleted successfully', 'success')
+    return redirect(url_for('manage_rooms'))
+
 
 # Class Subjects Assignment
 @app.route('/class-subjects/<int:class_id>')
@@ -1210,7 +1403,7 @@ def assign_batch_mentor():
     mentor_id = request.form.get('mentor_id')
     
     batch = Batch.query.get_or_404(batch_id)
-    batch.mentor_id = mentor_id
+    batch.mentor_id = mentor_id if mentor_id else None
     
     db.session.commit()
     
@@ -1274,19 +1467,214 @@ def view_timetable():
         # Organize by day and slot
         timetable_data = {}
         days = app.config['DAYS']
-        slots = list(range(len(app.config['TIME_SLOTS'])))
-        
-        for day in days:
-            timetable_data[day] = {}
-            for slot in slots:
-                entries = [e for e in timetable_entries if e.day == day and e.slot_number == slot]
-                timetable_data[day][slot] = entries
-    
-    return render_template('timetable.html',
-                         classes=classes,
+        entries = Timetable.query.filter_by(class_id=class_id).all()
+        if entries:
+            # Initialize with empty lists
+            timetable_data = {day: [[] for _ in range(len(app.config['TIME_SLOTS']))] for day in app.config['DAYS']}
+            for entry in entries:
+                timetable_data[entry.day][entry.slot_number].append(entry)
+                
+    return render_template('timetable.html', 
+                         classes=classes, 
                          class_id=class_id,
                          timetable_data=timetable_data,
-                         time_slots=time_slots)
+                         time_slots=app.config['TIME_SLOTS'],
+                         days=app.config['DAYS'])
+
+@app.route('/export_timetable/<int:class_id>')
+@login_required
+def export_timetable(class_id):
+    cls = Class.query.get_or_404(class_id)
+    timetable_entries = Timetable.query.filter_by(class_id=class_id).all()
+    
+    if not timetable_entries:
+        flash('No timetable generated for this class yet.', 'error')
+        return redirect(url_for('view_timetable', class_id=class_id))
+    
+    # Process timetable data exactly like view_timetable does
+    timetable_data = {day: [[] for _ in range(len(app.config['TIME_SLOTS']))] for day in app.config['DAYS']}
+    for entry in timetable_entries:
+        timetable_data[entry.day][entry.slot_number].append(entry)
+        
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Timetable"
+    
+    # Styles
+    bold_font = Font(bold=True)
+    title_font = Font(bold=True, size=16)
+    subtitle_font = Font(bold=True, size=12)
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    border_side = Side(border_style="thin", color="000000")
+    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+    heavy_side = Side(border_style="medium", color="000000")
+    heavy_border = Border(left=heavy_side, right=heavy_side, top=heavy_side, bottom=heavy_side)
+    gray_fill = PatternFill(start_color="D1D5DB", end_color="D1D5DB", fill_type="solid")
+    
+    # Set Column Widths
+    ws.column_dimensions['A'].width = 20  # Time
+    for col in ['B', 'C', 'D', 'E', 'F', 'G']:
+        ws.column_dimensions[col].width = 25
+        
+    current_row = 1
+    
+    # Headers
+    ws.merge_cells(f'A{current_row}:G{current_row}')
+    cell = ws.cell(row=current_row, column=1)
+    cell.value = "DKTE SOCIETY'S"
+    cell.font = bold_font
+    cell.alignment = center_align
+    current_row += 1
+    
+    ws.merge_cells(f'A{current_row}:G{current_row}')
+    cell = ws.cell(row=current_row, column=1)
+    cell.value = "YASHWANTRAO CHAVAN POLYTECHNIC, ICHALKARANJI"
+    cell.font = title_font
+    cell.alignment = center_align
+    current_row += 1
+    
+    ws.merge_cells(f'A{current_row}:G{current_row}')
+    cell = ws.cell(row=current_row, column=1)
+    cell.value = f"DEPARTMENT OF {cls.department.name.upper()}"
+    cell.font = subtitle_font
+    cell.alignment = center_align
+    current_row += 2
+    
+    # Subheader row
+    ws.merge_cells(f'D{current_row}:E{current_row}')
+    cell = ws.cell(row=current_row, column=4)
+    cell.value = "TIME TABLE 2025-26"
+    cell.font = bold_font
+    cell.alignment = center_align
+    
+    ws.merge_cells(f'F{current_row}:G{current_row}')
+    cell = ws.cell(row=current_row, column=6)
+    cell.value = f"CLASS: {cls.code}"
+    cell.font = bold_font
+    cell.alignment = center_align
+    current_row += 1
+    
+    # Table Headers
+    headers = ["TIME", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
+    for col_idx, header_text in enumerate(headers, 1):
+        cell = ws.cell(row=current_row, column=col_idx)
+        cell.value = header_text
+        cell.font = bold_font
+        cell.alignment = center_align
+        cell.border = heavy_border
+    current_row += 1
+    
+    # Table rows
+    time_slots = app.config['TIME_SLOTS']
+    for slot_idx in range(len(time_slots)):
+        is_break = False
+        try:
+            if timetable_data['Monday'][slot_idx] and timetable_data['Monday'][slot_idx][0].is_break:
+                is_break = True
+        except:
+            pass
+            
+        # Write Time Column
+        time_str = f"{time_slots[slot_idx][0]} TO {time_slots[slot_idx][1]}"
+        cell = ws.cell(row=current_row, column=1)
+        cell.value = time_str
+        cell.font = bold_font
+        cell.alignment = center_align
+        cell.border = thin_border
+        
+        if is_break:
+            ws.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=6)
+            break_cell = ws.cell(row=current_row, column=2)
+            break_cell.value = "LUNCH BREAK" if slot_idx == 3 else "SHORT BREAK"
+            break_cell.font = bold_font
+            break_cell.alignment = center_align
+            break_cell.fill = gray_fill
+            for c in range(2, 7):
+                ws.cell(row=current_row, column=c).border = thin_border
+            
+            sat_cell = ws.cell(row=current_row, column=7)
+            sat_cell.border = thin_border
+            sat_cell.fill = gray_fill
+        else:
+            for day_idx, day in enumerate(app.config['DAYS'], 2):
+                cell = ws.cell(row=current_row, column=day_idx)
+                cell.border = thin_border
+                cell.alignment = center_align
+                entries = timetable_data[day][slot_idx]
+                if entries:
+                    if entries[0].session_type == 'Mentoring':
+                        cell.value = "MENTORING"
+                        cell.font = bold_font
+                    elif entries[0].session_type == 'Lecture':
+                        subject_code = entries[0].subject.code
+                        faculty_name = entries[0].faculty_ref.name if entries[0].faculty_ref else ""
+                        room_number = entries[0].room.room_number if entries[0].room_id else ""
+                        cell.value = f"{subject_code}\n({faculty_name})\n({room_number})"
+                    elif entries[0].session_type == 'Practical':
+                        parts = []
+                        for entry in entries:
+                            fac_code = entry.room.room_number if entry.room_id else ""
+                            parts.append(f"{entry.subject.code}-{entry.batch.name} ({fac_code})")
+                        cell.value = "\n".join(parts)
+            
+            sat_cell = ws.cell(row=current_row, column=7)
+            sat_cell.border = thin_border
+        
+        ws.row_dimensions[current_row].height = 40
+        current_row += 1
+        
+    current_row += 2
+    subject_headers = ["SUBJECT", "FACULTY", "SUBJECT", "FACULTY"]
+    for col_idx, header_text in enumerate(subject_headers, 1):
+        cell = ws.cell(row=current_row, column=col_idx)
+        cell.value = header_text
+        cell.font = bold_font
+        cell.alignment = center_align
+        cell.border = thin_border
+    current_row += 1
+    
+    unique_subjects = list({cs.subject_id: cs for cs in cls.subjects}.values())
+    batches_of_two = [unique_subjects[i:i + 2] for i in range(0, len(unique_subjects), 2)]
+    
+    for row in batches_of_two:
+        c1 = ws.cell(row=current_row, column=1)
+        c1.value = row[0].subject_ref.name if len(row) > 0 else ""
+        c1.alignment = left_align
+        c1.border = thin_border
+        
+        c2 = ws.cell(row=current_row, column=2)
+        c2.value = row[0].faculty_ref.name if len(row) > 0 and row[0].faculty_ref else ""
+        c2.alignment = left_align
+        c2.border = thin_border
+        
+        c3 = ws.cell(row=current_row, column=3)
+        c3.value = row[1].subject_ref.name if len(row) > 1 else ""
+        c3.alignment = left_align
+        c3.border = thin_border
+        
+        c4 = ws.cell(row=current_row, column=4)
+        c4.value = row[1].faculty_ref.name if len(row) > 1 and row[1].faculty_ref else ""
+        c4.alignment = left_align
+        c4.border = thin_border
+        
+        current_row += 1
+        
+    current_row += 3
+    sigs = ["Time Table Incharge", "HOD", "Vice-Principal", "Principal"]
+    for i, sig in enumerate(sigs):
+        col = (i * 2) + 1
+        if col > 7: col = 7
+        cell = ws.cell(row=current_row, column=col)
+        cell.value = sig
+        cell.font = bold_font
+        
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    
+    filename = f"Timetable_{cls.code}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(out, download_name=filename, as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 # Initialize Sample Data
 @app.route('/init-sample-data')

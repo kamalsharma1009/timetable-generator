@@ -4,128 +4,98 @@
 {% block page_title %}Subjects Management{% endblock %}
 
 {% block content %}
-<div class="mb-8 flex justify-between items-center">
+<div class="mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
     <div>
         <h2 class="text-2xl font-bold text-gray-900">Subjects</h2>
-        <p class="mt-1 text-gray-600">Manage academic subjects with lecture and practical hours.</p>
+        <p class="mt-1 text-sm text-gray-500">Manage academic subjects with lecture and practical hours.</p>
     </div>
-    <button onclick="toggleAddForm()" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-        <i class="fas fa-plus mr-2"></i>Add Subject
+    <button onclick="openAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+        <i class="fas fa-plus mr-2"></i> Add Subject
     </button>
 </div>
 
-<!-- Add Subject Form -->
-<div id="addForm" class="hidden mb-8 bg-white rounded-lg shadow p-6">
-    <h3 class="text-lg font-medium text-gray-900 mb-4">Add New Subject</h3>
-    <form method="POST" action="{{ url_for('add_subject') }}">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                <label for="code" class="block text-sm font-medium text-gray-700">Subject Code</label>
-                <input type="text" id="code" name="code" required
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                       placeholder="e.g., CSE101">
-            </div>
-            <div>
-                <label for="name" class="block text-sm font-medium text-gray-700">Subject Name</label>
-                <input type="text" id="name" name="name" required
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                       placeholder="e.g., Programming Fundamentals">
-            </div>
-            <div>
-                <label for="type" class="block text-sm font-medium text-gray-700">Subject Type</label>
-                <select id="type" name="type" required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                    <option value="">Select Type</option>
-                    <option value="Theory">Theory</option>
-                    <option value="Practical">Practical</option>
-                    <option value="Lab">Lab</option>
-                    <option value="Tutorial">Tutorial</option>
-                </select>
-            </div>
-            <div>
-                <label for="department_id" class="block text-sm font-medium text-gray-700">Department (Optional)</label>
-                <select id="department_id" name="department_id"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                    <option value="">Common Subject (All Departments)</option>
-                    {% for dept in departments %}
-                    <option value="{{ dept.id }}">{{ dept.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label for="lecture_hours" class="block text-sm font-medium text-gray-700">Weekly Lecture Hours</label>
-                <input type="number" id="lecture_hours" name="lecture_hours" value="3"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-            </div>
-            <div>
-                <label for="practical_hours" class="block text-sm font-medium text-gray-700">Weekly Practical Hours</label>
-                <input type="number" id="practical_hours" name="practical_hours" value="2"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-            </div>
-            <div>
-                <label for="credits" class="block text-sm font-medium text-gray-700">Credits</label>
-                <input type="number" id="credits" name="credits" value="3"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-            </div>
-        </div>
-        <div class="mt-6 flex justify-end space-x-3">
-            <button type="button" onclick="toggleAddForm()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
-                Cancel
-            </button>
-            <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-                Add Subject
-            </button>
-        </div>
-    </form>
-</div>
-
 <!-- Subjects Table -->
-<div class="bg-white rounded-lg shadow overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">All Subjects</h3>
-    </div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
     {% if subjects %}
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hours (L/P)</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Credits</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject Info</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Hours (L/P)</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Department</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">Credits</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200">
+            <tbody class="bg-white divide-y divide-gray-200">
                 {% for subject in subjects %}
-                <tr>
-                    <td class="px-6 py-4">
-                        <span class="font-medium">{{ subject.code }}</span>
+                <tr class="hover:bg-primary-50 transition-colors duration-150 group">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 h-10 w-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-bold text-xs uppercase shadow-sm border border-blue-200">
+                                {{ subject.code[:3] }}
+                            </div>
+                            <div class="ml-4">
+                                <div class="text-sm font-bold text-gray-900">{{ subject.name }}</div>
+                                <div class="text-xs text-gray-500 font-mono">{{ subject.code }}</div>
+                            </div>
+                        </div>
                     </td>
-                    <td class="px-6 py-4">
-                        <div class="font-medium">{{ subject.name }}</div>
-                    </td>
-                    <td class="px-6 py-4">
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full 
-                            {% if subject.type == 'Theory' %}bg-blue-100 text-blue-800
-                            {% elif subject.type == 'Practical' %}bg-green-100 text-green-800
-                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
+                            {% if subject.type == 'Theory' %}bg-blue-50 text-blue-700 border-blue-200
+                            {% elif subject.type == 'Practical' %}bg-green-50 text-green-700 border-green-200
+                            {% elif subject.type == 'Lab' %}bg-purple-50 text-purple-700 border-purple-200
+                            {% else %}bg-gray-50 text-gray-700 border-gray-200{% endif %}">
+                            <i class="fas {% if subject.type == 'Theory' %}fa-book focus 
+                                        {% elif subject.type == 'Practical' %}fa-tools 
+                                        {% else %}fa-flask{% endif %} mr-1.5 opacity-70"></i>
                             {{ subject.type }}
                         </span>
                     </td>
-                    <td class="px-6 py-4">
-                        {{ subject.lecture_hours }} / {{ subject.practical_hours }}
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center space-x-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800" title="Lecture Hours">
+                                L: {{ subject.lecture_hours }}
+                            </span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800" title="Practical Hours">
+                                P: {{ subject.practical_hours }}
+                            </span>
+                        </div>
                     </td>
-                    <td class="px-6 py-4">
+                    <td class="px-6 py-4 whitespace-nowrap">
                         {% if subject.department %}
-                            {{ subject.department.name }}
+                            <div class="text-sm text-gray-900">{{ subject.department.name }}</div>
+                            <div class="text-xs text-gray-500">{{ subject.department.code }}</div>
                         {% else %}
-                            <span class="text-gray-400">Common</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                                <i class="fas fa-globe mr-1"></i> Common
+                            </span>
                         {% endif %}
                     </td>
-                    <td class="px-6 py-4">
-                        {{ subject.credits }}
+                    <td class="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                        <div class="text-sm font-semibold text-gray-900">{{ subject.credits }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <button onclick="openEditModal(this)"
+                                data-id="{{ subject.id }}"
+                                data-code="{{ subject.code }}"
+                                data-name="{{ subject.name }}"
+                                data-type="{{ subject.type }}"
+                                data-department="{{ subject.department_id or '' }}"
+                                data-lecture="{{ subject.lecture_hours }}"
+                                data-practical="{{ subject.practical_hours }}"
+                                data-credits="{{ subject.credits }}"
+                                class="text-primary-600 hover:text-primary-900 bg-primary-50 hover:bg-primary-100 p-2 rounded-lg transition-colors">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <form action="{{ url_for('delete_subject', id=subject.id) }}" method="POST" class="inline" onsubmit="return confirmDelete('Are you sure you want to delete {{ subject.name }} ({{ subject.code }})? This action cannot be undone.');">
+                            <button type="submit" class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}
@@ -133,16 +103,182 @@
         </table>
     </div>
     {% else %}
-    <div class="p-6 text-center text-gray-500">
-        No subjects found. Add your first subject!
+    <div class="p-8 text-center flex flex-col items-center justify-center">
+        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <i class="fas fa-book-open text-2xl text-gray-400"></i>
+        </div>
+        <h3 class="text-sm font-medium text-gray-900">No subjects found</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by creating a new academic subject.</p>
+        <div class="mt-6">
+            <button onclick="openAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
+                <i class="fas fa-plus mr-2"></i> Add Subject
+            </button>
+        </div>
     </div>
     {% endif %}
 </div>
 
+<!-- Add/Edit Subject Modal -->
+<div id="subjectModal" class="fixed inset-0 z-50 hidden overflow-y-auto lg:pl-72" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <!-- Background overlay -->
+        <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="closeModal()"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <!-- Modal panel -->
+        <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full border border-slate-100">
+            
+            <!-- Modal Header -->
+            <div class="bg-white px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
+                        <i class="fas fa-book text-lg"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900" id="modal-title">Add Subject</h3>
+                </div>
+                <button type="button" onclick="closeModal()" class="text-slate-400 hover:text-slate-500 hover:bg-slate-100 w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body (Form) -->
+            <form id="subjectForm" method="POST" action="">
+                <div class="px-6 py-6 sm:p-8 overflow-y-auto max-h-[calc(100vh-16rem)]">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+                        <!-- Subject Code -->
+                        <div>
+                            <label for="code" class="block text-sm font-semibold text-slate-700 mb-1.5">Subject Code <span class="text-red-500">*</span></label>
+                            <input type="text" id="code" name="code" required placeholder="e.g. CSE101"
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Subject Name -->
+                        <div>
+                            <label for="name" class="block text-sm font-semibold text-slate-700 mb-1.5">Subject Name <span class="text-red-500">*</span></label>
+                            <input type="text" id="name" name="name" required placeholder="e.g. Data Structures"
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Subject Type -->
+                        <div>
+                            <label for="type" class="block text-sm font-semibold text-slate-700 mb-1.5">Subject Type <span class="text-red-500">*</span></label>
+                            <select id="type" name="type" required
+                                    class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                                <option value="">Select Type</option>
+                                <option value="Theory">Theory</option>
+                                <option value="Practical">Practical</option>
+                                <option value="Lab">Lab</option>
+                                <option value="Tutorial">Tutorial</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Department -->
+                        <div>
+                            <label for="department_id" class="block text-sm font-semibold text-slate-700 mb-1.5">Department</label>
+                            <select id="department_id" name="department_id"
+                                    class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                                <option value="">Common Subject (All)</option>
+                                {% for dept in departments %}
+                                <option value="{{ dept.id }}">{{ dept.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Lecture Hours -->
+                        <div>
+                            <label for="lecture_hours" class="block text-sm font-semibold text-slate-700 mb-1.5">Weekly Lecture Hours <span class="text-red-500">*</span></label>
+                            <input type="number" id="lecture_hours" name="lecture_hours" value="3" min="0" required
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Practical Hours -->
+                        <div>
+                            <label for="practical_hours" class="block text-sm font-semibold text-slate-700 mb-1.5">Weekly Practical Hours <span class="text-red-500">*</span></label>
+                            <input type="number" id="practical_hours" name="practical_hours" value="2" min="0" required
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Credits -->
+                        <div class="sm:col-span-2">
+                            <label for="credits" class="block text-sm font-semibold text-slate-700 mb-1.5">Credits <span class="text-red-500">*</span></label>
+                            <input type="number" id="credits" name="credits" value="3" min="1" required
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 sm:px-8">
+                    <button type="button" onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200 transition-colors shadow-sm">
+                        Cancel
+                    </button>
+                    <button type="submit" id="submitBtn" class="px-5 py-2.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors shadow-sm">
+                        Save Subject
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
-function toggleAddForm() {
-    const form = document.getElementById('addForm');
-    form.classList.toggle('hidden');
-}
+    const modal = document.getElementById('subjectModal');
+    const subjectForm = document.getElementById('subjectForm');
+    const modalTitle = document.getElementById('modal-title');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // Form fields
+    const codeInput = document.getElementById('code');
+    const nameInput = document.getElementById('name');
+    const typeInput = document.getElementById('type');
+    const deptInput = document.getElementById('department_id');
+    const lecInput = document.getElementById('lecture_hours');
+    const pracInput = document.getElementById('practical_hours');
+    const credInput = document.getElementById('credits');
+
+    function openAddModal() {
+        modalTitle.textContent = 'Add New Subject';
+        submitBtn.textContent = 'Create Subject';
+        subjectForm.action = "{{ url_for('add_subject') }}";
+        
+        // Clear fields defaults
+        codeInput.value = '';
+        nameInput.value = '';
+        typeInput.value = '';
+        deptInput.value = '';
+        lecInput.value = '3';
+        pracInput.value = '2';
+        credInput.value = '3';
+        
+        modal.classList.remove('hidden');
+    }
+
+    function openEditModal(btn) {
+        modalTitle.textContent = 'Edit Subject';
+        submitBtn.textContent = 'Update Subject';
+        subjectForm.action = "/subjects/edit/" + btn.dataset.id;
+        
+        // Populate fields
+        codeInput.value = btn.dataset.code;
+        nameInput.value = btn.dataset.name;
+        typeInput.value = btn.dataset.type;
+        deptInput.value = btn.dataset.department;
+        lecInput.value = btn.dataset.lecture;
+        pracInput.value = btn.dataset.practical;
+        credInput.value = btn.dataset.credits;
+        
+        modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+    }
+
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
 </script>
 {% endblock %}

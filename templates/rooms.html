@@ -4,120 +4,93 @@
 {% block page_title %}Rooms & Labs Management{% endblock %}
 
 {% block content %}
-<div class="mb-8 flex justify-between items-center">
+<div class="mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
     <div>
         <h2 class="text-2xl font-bold text-gray-900">Rooms & Labs</h2>
-        <p class="mt-1 text-gray-600">Manage classrooms and laboratories for scheduling.</p>
+        <p class="mt-1 text-sm text-gray-500">Manage classrooms, laboratories, and physical spaces for scheduling.</p>
     </div>
-    <button onclick="toggleAddForm()" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-        <i class="fas fa-plus mr-2"></i>Add Room/Lab
+    <button onclick="openAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+        <i class="fas fa-plus mr-2"></i> Add Room/Lab
     </button>
 </div>
 
-<!-- Add Room Form -->
-<div id="addForm" class="hidden mb-8 bg-white rounded-lg shadow p-6">
-    <h3 class="text-lg font-medium text-gray-900 mb-4">Add New Room/Lab</h3>
-    <form method="POST" action="{{ url_for('add_room') }}">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                <label for="room_number" class="block text-sm font-medium text-gray-700">Room Number</label>
-                <input type="text" id="room_number" name="room_number" required
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                       placeholder="e.g., A-101">
-            </div>
-            <div>
-                <label for="room_type" class="block text-sm font-medium text-gray-700">Room Type</label>
-                <select id="room_type" name="room_type" required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                    <option value="">Select Type</option>
-                    <option value="Classroom">Classroom</option>
-                    <option value="Lab">Laboratory</option>
-                    <option value="Auditorium">Auditorium</option>
-                </select>
-            </div>
-            <div>
-                <label for="capacity" class="block text-sm font-medium text-gray-700">Capacity</label>
-                <input type="number" id="capacity" name="capacity" required min="1"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                       placeholder="e.g., 60">
-            </div>
-            <div>
-                <label for="department_id" class="block text-sm font-medium text-gray-700">Department (Optional)</label>
-                <select id="department_id" name="department_id"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                    <option value="">Common Room (All Departments)</option>
-                    {% for dept in departments %}
-                    <option value="{{ dept.id }}">{{ dept.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="md:col-span-2">
-                <label for="equipment" class="block text-sm font-medium text-gray-700">Equipment/Description</label>
-                <textarea id="equipment" name="equipment" rows="3"
-                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                          placeholder="Special equipment or room features..."></textarea>
-            </div>
-        </div>
-        <div class="mt-6 flex justify-end space-x-3">
-            <button type="button" onclick="toggleAddForm()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
-                Cancel
-            </button>
-            <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-                Add Room/Lab
-            </button>
-        </div>
-    </form>
-</div>
-
 <!-- Rooms Table -->
-<div class="bg-white rounded-lg shadow overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">All Rooms & Labs</h3>
-    </div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
     {% if rooms %}
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Room Number</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Capacity</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Equipment</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Room Info</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type & Capacity</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">Department</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">Equipment/Notes</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200">
+            <tbody class="bg-white divide-y divide-gray-200">
                 {% for room in rooms %}
-                <tr>
-                    <td class="px-6 py-4">
-                        <span class="font-medium">{{ room.room_number }}</span>
+                <tr class="hover:bg-primary-50 transition-colors duration-150">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 h-10 w-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-bold shadow-sm border border-blue-200">
+                                <i class="fas {% if room.room_type == 'Lab' %}fa-flask{% elif room.room_type == 'Auditorium' %}fa-users-class{% else %}fa-door-open{% endif %}"></i>
+                            </div>
+                            <div class="ml-4">
+                                <div class="text-sm font-bold text-gray-900">{{ room.room_number }}</div>
+                            </div>
+                        </div>
                     </td>
-                    <td class="px-6 py-4">
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full 
-                            {% if room.room_type == 'Classroom' %}bg-blue-100 text-blue-800
-                            {% elif room.room_type == 'Lab' %}bg-green-100 text-green-800
-                            {% else %}bg-purple-100 text-purple-800{% endif %}">
-                            {{ room.room_type }}
-                        </span>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex flex-col space-y-1">
+                            <div>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border
+                                    {% if room.room_type == 'Classroom' %}bg-blue-50 text-blue-700 border-blue-200
+                                    {% elif room.room_type == 'Lab' %}bg-green-50 text-green-700 border-green-200
+                                    {% else %}bg-purple-50 text-purple-700 border-purple-200{% endif %}">
+                                    {{ room.room_type }}
+                                </span>
+                            </div>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-800 border border-gray-200 w-max">
+                                <i class="fas fa-users mr-1.5 opacity-70"></i> {{ room.capacity }} Seats
+                            </span>
+                        </div>
                     </td>
-                    <td class="px-6 py-4">
-                        {{ room.capacity }} seats
-                    </td>
-                    <td class="px-6 py-4">
-                        {% if room.department_id %}
-                            {{ room.department_id }}
+                    <td class="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                        {% if room.department %}
+                            <div class="text-sm text-gray-900">{{ room.department.name }}</div>
+                            <div class="text-xs text-gray-500">{{ room.department.code }}</div>
                         {% else %}
-                            <span class="text-gray-400">Common</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                                <i class="fas fa-globe mr-1 opacity-70"></i> Common
+                            </span>
                         {% endif %}
                     </td>
-                    <td class="px-6 py-4">
-                        <div class="text-sm text-gray-500">
+                    <td class="px-6 py-4 hidden md:table-cell">
+                        <div class="text-sm text-gray-500 line-clamp-2 max-w-xs" title="{{ room.equipment }}">
                             {% if room.equipment %}
-                                {{ room.equipment[:50] }}{% if room.equipment|length > 50 %}...{% endif %}
+                                {{ room.equipment }}
                             {% else %}
-                                —
+                                <span class="text-gray-400 italic">No special equipment listed.</span>
                             {% endif %}
                         </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <button onclick="openEditModal(this)"
+                                data-id="{{ room.id }}"
+                                data-number="{{ room.room_number }}"
+                                data-type="{{ room.room_type }}"
+                                data-capacity="{{ room.capacity }}"
+                                data-department="{{ room.department_id or '' }}"
+                                data-equipment="{{ room.equipment or '' }}"
+                                class="text-primary-600 hover:text-primary-900 bg-primary-50 hover:bg-primary-100 p-2 rounded-lg transition-colors">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <form action="{{ url_for('delete_room', id=room.id) }}" method="POST" class="inline" onsubmit="return confirmDelete('Are you sure you want to delete {{ room.room_number }}? This action cannot be undone.');">
+                            <button type="submit" class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}
@@ -125,16 +98,161 @@
         </table>
     </div>
     {% else %}
-    <div class="p-6 text-center text-gray-500">
-        No rooms/labs found. Add your first room/lab!
+    <div class="p-8 text-center flex flex-col items-center justify-center">
+        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <i class="fas fa-door-open text-2xl text-gray-400"></i>
+        </div>
+        <h3 class="text-sm font-medium text-gray-900">No rooms or labs found</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by adding a physical space where classes happen.</p>
+        <div class="mt-6">
+            <button onclick="openAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
+                <i class="fas fa-plus mr-2"></i> Add Room/Lab
+            </button>
+        </div>
     </div>
     {% endif %}
 </div>
 
+<!-- Add/Edit Room Modal -->
+<div id="roomModal" class="fixed inset-0 z-50 hidden overflow-y-auto lg:pl-72" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <!-- Background overlay -->
+        <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="closeModal()"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <!-- Modal panel -->
+        <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full border border-slate-100">
+            
+            <!-- Modal Header -->
+            <div class="bg-white px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
+                        <i class="fas fa-door-open text-lg"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900" id="modal-title">Add Room/Lab</h3>
+                </div>
+                <button type="button" onclick="closeModal()" class="text-slate-400 hover:text-slate-500 hover:bg-slate-100 w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body (Form) -->
+            <form id="roomForm" method="POST" action="">
+                <div class="px-6 py-6 sm:p-8 overflow-y-auto max-h-[calc(100vh-16rem)]">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+                        <!-- Room Number -->
+                        <div>
+                            <label for="room_number" class="block text-sm font-semibold text-slate-700 mb-1.5">Room/Lab Number <span class="text-red-500">*</span></label>
+                            <input type="text" id="room_number" name="room_number" required placeholder="e.g. A-101"
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Room Type -->
+                        <div>
+                            <label for="room_type" class="block text-sm font-semibold text-slate-700 mb-1.5">Room Type <span class="text-red-500">*</span></label>
+                            <select id="room_type" name="room_type" required
+                                    class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                                <option value="">Select Type</option>
+                                <option value="Classroom">Classroom</option>
+                                <option value="Lab">Laboratory</option>
+                                <option value="Auditorium">Auditorium</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Capacity -->
+                        <div>
+                            <label for="capacity" class="block text-sm font-semibold text-slate-700 mb-1.5">Capacity (Seats) <span class="text-red-500">*</span></label>
+                            <input type="number" id="capacity" name="capacity" required min="1" placeholder="e.g. 60"
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Department -->
+                        <div>
+                            <label for="department_id" class="block text-sm font-semibold text-slate-700 mb-1.5">Department</label>
+                            <select id="department_id" name="department_id"
+                                    class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                                <option value="">Common Room (All)</option>
+                                {% for dept in departments %}
+                                <option value="{{ dept.id }}">{{ dept.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Equipment/Notes -->
+                        <div class="sm:col-span-2">
+                            <label for="equipment" class="block text-sm font-semibold text-slate-700 mb-1.5">Equipment / Description</label>
+                            <textarea id="equipment" name="equipment" rows="3" placeholder="Special equipment, projectors, features..."
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors resize-none"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 sm:px-8">
+                    <button type="button" onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200 transition-colors shadow-sm">
+                        Cancel
+                    </button>
+                    <button type="submit" id="submitBtn" class="px-5 py-2.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors shadow-sm">
+                        Save Room
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
-function toggleAddForm() {
-    const form = document.getElementById('addForm');
-    form.classList.toggle('hidden');
-}
+    const modal = document.getElementById('roomModal');
+    const roomForm = document.getElementById('roomForm');
+    const modalTitle = document.getElementById('modal-title');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // Form fields
+    const numInput = document.getElementById('room_number');
+    const typeInput = document.getElementById('room_type');
+    const capInput = document.getElementById('capacity');
+    const deptInput = document.getElementById('department_id');
+    const eqInput = document.getElementById('equipment');
+
+    function openAddModal() {
+        modalTitle.textContent = 'Add New Room/Lab';
+        submitBtn.textContent = 'Create Room';
+        roomForm.action = "{{ url_for('add_room') }}";
+        
+        // Clear fields
+        numInput.value = '';
+        typeInput.value = '';
+        capInput.value = '';
+        deptInput.value = '';
+        eqInput.value = '';
+        
+        modal.classList.remove('hidden');
+    }
+
+    function openEditModal(btn) {
+        modalTitle.textContent = 'Edit Room/Lab';
+        submitBtn.textContent = 'Update Room';
+        roomForm.action = "/rooms/edit/" + btn.dataset.id;
+        
+        // Populate fields
+        numInput.value = btn.dataset.number;
+        typeInput.value = btn.dataset.type;
+        capInput.value = btn.dataset.capacity;
+        deptInput.value = btn.dataset.department;
+        eqInput.value = btn.dataset.equipment;
+        
+        modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+    }
+
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
 </script>
 {% endblock %}
