@@ -4,82 +4,57 @@
 {% block page_title %}Departments Management{% endblock %}
 
 {% block content %}
-<div class="mb-8 flex justify-between items-center">
+<div class="mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
     <div>
         <h2 class="text-2xl font-bold text-gray-900">Departments</h2>
-        <p class="mt-1 text-gray-600">Manage academic departments in your college.</p>
+        <p class="mt-1 text-sm text-gray-500">Manage academic departments and their details.</p>
     </div>
-    <button onclick="toggleAddForm()" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-        <i class="fas fa-plus mr-2"></i>Add Department
+    <button onclick="openAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+        <i class="fas fa-plus mr-2"></i> Add Department
     </button>
 </div>
 
-<!-- Add Department Form -->
-<div id="addForm" class="hidden mb-8 bg-white rounded-lg shadow p-6">
-    <h3 class="text-lg font-medium text-gray-900 mb-4">Add New Department</h3>
-    <form method="POST" action="{{ url_for('add_department') }}">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                <label for="code" class="block text-sm font-medium text-gray-700">Department Code</label>
-                <input type="text" id="code" name="code" required
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-            </div>
-            <div>
-                <label for="name" class="block text-sm font-medium text-gray-700">Department Name</label>
-                <input type="text" id="name" name="name" required
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-            </div>
-            <div class="md:col-span-2">
-                <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
-                <textarea id="description" name="description" rows="3"
-                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"></textarea>
-            </div>
-        </div>
-        <div class="mt-6 flex justify-end space-x-3">
-            <button type="button" onclick="toggleAddForm()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
-                Cancel
-            </button>
-            <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-                Add Department
-            </button>
-        </div>
-    </form>
-</div>
-
 <!-- Departments Table -->
-<div class="bg-white rounded-lg shadow overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">All Departments</h3>
-    </div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
     {% if departments %}
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Department Name</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">Description</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200">
+            <tbody class="bg-white divide-y divide-gray-200">
                 {% for dept in departments %}
-                <tr>
-                    <td class="px-6 py-4">
-                        <span class="font-medium">{{ dept.code }}</span>
+                <tr class="hover:bg-primary-50 transition-colors duration-150 group">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                            {{ dept.code }}
+                        </span>
                     </td>
-                    <td class="px-6 py-4">
-                        <div class="font-medium">{{ dept.name }}</div>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-semibold text-gray-900">{{ dept.name }}</div>
                     </td>
-                    <td class="px-6 py-4">
-                        <div class="text-sm text-gray-500">{{ dept.description or '—' }}</div>
+                    <td class="px-6 py-4 hidden md:table-cell">
+                        <div class="text-sm text-gray-500 line-clamp-2" title="{{ dept.description }}">{{ dept.description or '—' }}</div>
                     </td>
-                    <td class="px-6 py-4">
-                        <a href="{{ url_for('delete_department', id=dept.id) }}" 
-                           onclick="return confirmDelete('Delete department {{ dept.name }}?')"
-                           class="text-red-600 hover:text-red-900">
-                            <i class="fas fa-trash"></i> Delete
-                        </a>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <button onclick="openEditModal(this)"
+                                data-id="{{ dept.id }}"
+                                data-code="{{ dept.code }}"
+                                data-name="{{ dept.name }}"
+                                data-desc="{{ dept.description or '' }}"
+                                class="text-primary-600 hover:text-primary-900 bg-primary-50 hover:bg-primary-100 p-2 rounded-lg transition-colors">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <form action="{{ url_for('delete_department', id=dept.id) }}" method="POST" class="inline" onsubmit="return confirmDelete('Are you sure you want to delete {{ dept.name }}? This action cannot be undone if it is unsafe.');">
+                            <button type="submit" class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}
@@ -87,16 +62,131 @@
         </table>
     </div>
     {% else %}
-    <div class="p-6 text-center text-gray-500">
-        No departments found. Add your first department!
+    <div class="p-8 text-center flex flex-col items-center justify-center">
+        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <i class="fas fa-building text-2xl text-gray-400"></i>
+        </div>
+        <h3 class="text-sm font-medium text-gray-900">No departments found</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by creating a new academic department.</p>
+        <div class="mt-6">
+            <button onclick="openAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
+                <i class="fas fa-plus mr-2"></i> Add Department
+            </button>
+        </div>
     </div>
     {% endif %}
 </div>
 
+<!-- Add/Edit Department Modal -->
+<div id="departmentModal" class="fixed inset-0 z-50 hidden overflow-y-auto lg:pl-72" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <!-- Background overlay -->
+        <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="closeModal()"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <!-- Modal panel -->
+        <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-slate-100">
+            
+            <!-- Modal Header -->
+            <div class="bg-white px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
+                        <i class="fas fa-building text-lg"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900" id="modal-title">Add Department</h3>
+                </div>
+                <button type="button" onclick="closeModal()" class="text-slate-400 hover:text-slate-500 hover:bg-slate-100 w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body (Form) -->
+            <form id="deptForm" method="POST" action="">
+                <div class="px-6 py-6 sm:p-8 overflow-y-auto max-h-[calc(100vh-16rem)]">
+                    <div class="space-y-5">
+                        <!-- Department Code -->
+                        <div>
+                            <label for="code" class="block text-sm font-semibold text-slate-700 mb-1.5">Department Code <span class="text-red-500">*</span></label>
+                            <input type="text" id="code" name="code" required placeholder="e.g. CSE"
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Department Name -->
+                        <div>
+                            <label for="name" class="block text-sm font-semibold text-slate-700 mb-1.5">Department Name <span class="text-red-500">*</span></label>
+                            <input type="text" id="name" name="name" required placeholder="e.g. Computer Science"
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Description -->
+                        <div>
+                            <label for="description" class="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
+                            <textarea id="description" name="description" rows="3" placeholder="Optional details..."
+                                class="w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 px-3 py-2 text-sm outline-none transition-colors resize-none"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 sm:px-8">
+                    <button type="button" onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200 transition-colors shadow-sm">
+                        Cancel
+                    </button>
+                    <button type="submit" id="submitBtn" class="px-5 py-2.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors shadow-sm">
+                        Save Department
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
-function toggleAddForm() {
-    const form = document.getElementById('addForm');
-    form.classList.toggle('hidden');
-}
+    const modal = document.getElementById('departmentModal');
+    const deptForm = document.getElementById('deptForm');
+    const modalTitle = document.getElementById('modal-title');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // Form fields
+    const codeInput = document.getElementById('code');
+    const nameInput = document.getElementById('name');
+    const descInput = document.getElementById('description');
+
+    function openAddModal() {
+        modalTitle.textContent = 'Add New Department';
+        submitBtn.textContent = 'Create Department';
+        deptForm.action = "{{ url_for('add_department') }}";
+        
+        // Clear fields
+        codeInput.value = '';
+        nameInput.value = '';
+        descInput.value = '';
+        
+        modal.classList.remove('hidden');
+    }
+
+    function openEditModal(btn) {
+        modalTitle.textContent = 'Edit Department';
+        submitBtn.textContent = 'Update Department';
+        deptForm.action = "/departments/edit/" + btn.dataset.id;
+        
+        // Populate fields
+        codeInput.value = btn.dataset.code;
+        nameInput.value = btn.dataset.name;
+        descInput.value = btn.dataset.desc;
+        
+        modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+    }
+
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
 </script>
 {% endblock %}

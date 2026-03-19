@@ -4,36 +4,52 @@
 {% block page_title %}Assign Subjects to Class{% endblock %}
 
 {% block content %}
-<div class="mb-8">
-    <div class="flex justify-between items-start">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-900">{{ class_obj.name }} ({{ class_obj.code }})</h2>
-            <p class="mt-1 text-gray-600">
-                {{ class_obj.department.name }} • Year {{ class_obj.year }} • Semester {{ class_obj.semester }}
-            </p>
+<div class="mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+    <div class="flex items-center space-x-4">
+        <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-md">
+            {{ class_obj.year }}Y
         </div>
-        <a href="{{ url_for('manage_classes') }}" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
-            <i class="fas fa-arrow-left mr-2"></i>Back to Classes
+        <div>
+            <h2 class="text-2xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                {{ class_obj.name }} 
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">{{ class_obj.code }}</span>
+            </h2>
+            <div class="mt-1 flex items-center gap-3 text-sm text-gray-500 font-medium">
+                <span class="flex items-center"><i class="fas fa-building text-gray-400 mr-1.5"></i> {{ class_obj.department.name }}</span>
+                <span class="text-gray-300">•</span>
+                <span class="flex items-center"><i class="fas fa-layer-group text-gray-400 mr-1.5"></i> Sem {{ class_obj.semester }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="flex gap-2">
+        <a href="{{ url_for('manage_classes') }}" class="inline-flex items-center px-4 py-2 border border-gray-200 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+            <i class="fas fa-arrow-left mr-2"></i> All Classes
+        </a>
+        <a href="{{ url_for('manage_batch_mentors', class_id=class_obj.id) }}" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-lg text-whtie text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border-yellow-200 transition-colors">
+            <i class="fas fa-user-tie mr-2"></i> Mentors
         </a>
     </div>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-    <!-- Assign Subject Form -->
-    <div class="bg-white rounded-lg shadow">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-900">Assign New Subject</h3>
-        </div>
-        <div class="p-6">
-            <form method="POST" action="{{ url_for('add_class_subject') }}">
-                <input type="hidden" name="class_id" value="{{ class_obj.id }}">
-                
-                <div class="space-y-6">
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-8">
+    
+    <!-- Left Column: Assign Subject Form -->
+    <div class="xl:col-span-4 space-y-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-6">
+            <div class="px-6 py-5 border-b border-gray-50 bg-gradient-to-r from-gray-50 to-white">
+                <h3 class="text-lg font-bold text-gray-900 flex items-center">
+                    <i class="fas fa-plus-circle text-primary-500 mr-2"></i> Assign New Subject
+                </h3>
+            </div>
+            <div class="p-6">
+                <form method="POST" action="{{ url_for('add_class_subject') }}" class="space-y-5">
+                    <input type="hidden" name="class_id" value="{{ class_obj.id }}">
+                    
                     <div>
-                        <label for="subject_id" class="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+                        <label for="subject_id" class="block text-sm font-semibold text-gray-700 mb-1.5">Subject</label>
                         <select id="subject_id" name="subject_id" required
-                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                            <option value="">Select Subject</option>
+                                class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm py-2 px-3 border bg-white transition-colors">
+                            <option value="">-- Select Subject --</option>
                             {% for subject in subjects %}
                             <option value="{{ subject.id }}">
                                 {{ subject.code }} - {{ subject.name }} ({{ subject.type }})
@@ -43,182 +59,184 @@
                     </div>
                     
                     <div>
-                        <label for="faculty_id" class="block text-sm font-medium text-gray-700 mb-2">Faculty</label>
+                        <label for="faculty_id" class="block text-sm font-semibold text-gray-700 mb-1.5">Faculty</label>
                         <select id="faculty_id" name="faculty_id" required
-                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                            <option value="">Select Faculty</option>
+                                class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm py-2 px-3 border bg-white transition-colors">
+                            <option value="">-- Select Faculty --</option>
                             {% for faculty in faculty_list %}
                             <option value="{{ faculty.id }}">
-                                {{ faculty.name }} ({{ faculty.department.name if faculty.department else 'Common' }})
+                                {{ faculty.name }} ({{ faculty.department.code if faculty.department else 'Common' }})
                             </option>
                             {% endfor %}
                         </select>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label for="lecture_slots" class="block text-sm font-medium text-gray-700 mb-2">
-                                Weekly Lecture Slots
+                        <div class="bg-blue-50/50 p-3 rounded-xl border border-blue-100">
+                            <label for="lecture_slots" class="block text-xs font-bold text-blue-800 uppercase tracking-wider mb-2">
+                                Lecture <i class="fas fa-chalkboard ml-1"></i>
                             </label>
-                            <input type="number" id="lecture_slots" name="lecture_slots" value="3" min="1" max="10"
-                                   class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                            <p class="mt-1 text-xs text-gray-500">1 slot = 1 hour</p>
+                            <input type="number" id="lecture_slots" name="lecture_slots" value="3" min="0" max="10"
+                                   class="block w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm py-1.5 px-3">
+                            <p class="mt-1.5 text-[10px] font-medium text-blue-600 text-center">1 slot = 1 hour</p>
                         </div>
                         
-                        <div>
-                            <label for="practical_slots" class="block text-sm font-medium text-gray-700 mb-2">
-                                Weekly Practical Slots
+                        <div class="bg-green-50/50 p-3 rounded-xl border border-green-100">
+                            <label for="practical_slots" class="block text-xs font-bold text-green-800 uppercase tracking-wider mb-2">
+                                Practical <i class="fas fa-flask ml-1"></i>
                             </label>
                             <input type="number" id="practical_slots" name="practical_slots" value="2" min="0" max="10"
-                                   class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                            <p class="mt-1 text-xs text-gray-500">1 slot = 2 hours</p>
+                                   class="block w-full rounded-md border-green-200 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm py-1.5 px-3">
+                            <p class="mt-1.5 text-[10px] font-medium text-green-600 text-center">1 slot = 2 hours</p>
                         </div>
                     </div>
                     
-                    <div class="pt-4">
+                    <div class="pt-2">
                         <button type="submit" 
-                                class="w-full px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-                            <i class="fas fa-plus mr-2"></i>Assign Subject to Class
+                                class="w-full flex justify-center items-center px-4 py-2.5 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 shadow-sm transition-all active:scale-95">
+                            <i class="fas fa-link mr-2"></i> Map Subject to Class
                         </button>
                     </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Summary Widget -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="p-5 bg-gray-900 text-white">
+                <h4 class="font-bold text-sm tracking-wider uppercase flex items-center">
+                    <i class="fas fa-chart-pie text-gray-400 mr-2"></i> Weekly Load
+                </h4>
+            </div>
+            <div class="p-1">
+                <div class="grid grid-cols-2 divide-x divide-gray-100">
+                    <div class="p-4 flex flex-col items-center justify-center text-center">
+                        {% set total_lecture = class_subjects|sum(attribute='lecture_slots_per_week') %}
+                        <span class="text-3xl font-black text-blue-600">{{ total_lecture }}</span>
+                        <span class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Lecture Hrs</span>
+                    </div>
+                    <div class="p-4 flex flex-col items-center justify-center text-center">
+                        {% set total_practical = class_subjects|sum(attribute='practical_slots_per_week') * 2 %}
+                        <span class="text-3xl font-black text-green-600">{{ total_practical }}</span>
+                        <span class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Lab Hrs</span>
+                    </div>
                 </div>
-            </form>
+                <div class="bg-gray-50 p-3 text-center border-t border-gray-100 text-xs font-semibold text-gray-600">
+                    Total: {{ total_lecture + total_practical }} hours / week
+                </div>
+            </div>
         </div>
     </div>
     
-    <!-- Assigned Subjects List -->
-    <div class="bg-white rounded-lg shadow">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-900">Assigned Subjects</h3>
-            <p class="mt-1 text-sm text-gray-500">
-                {{ class_subjects|length }} subjects assigned
-            </p>
-        </div>
-        
-        <div class="p-6">
-            {% if class_subjects %}
-            <div class="space-y-4">
-                {% for cs in class_subjects %}
-{% for cs in class_subjects %}
-<div class="border border-gray-200 rounded-lg p-4">
-
-    <form method="POST" action="{{ url_for('update_class_subject', id=cs.id) }}">
-
-        <div class="flex justify-between items-start">
-            <div>
-                <h4 class="font-medium text-gray-900">
-                    {{ cs.subject_ref.code }} - {{ cs.subject_ref.name }}
-                </h4>
+    <!-- Right Column: Assigned Subjects List -->
+    <div class="xl:col-span-8">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
+            <div class="px-6 py-5 border-b border-gray-50 flex justify-between items-center bg-white z-10 sticky top-0">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Assigned Subjects Layout</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Edit faculty assignment and allocated slots below.</p>
+                </div>
+                <span class="inline-flex items-center justify-center px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-100">
+                    {{ class_subjects|length }} Total
+                </span>
             </div>
-        </div>
-
-        <div class="mt-4 grid grid-cols-3 gap-4">
-
-            <!-- Faculty -->
-            <div>
-                <label class="text-sm text-gray-600">Faculty</label>
-                <select name="faculty_id" class="w-full border rounded px-2 py-1">
-                    {% for faculty in faculty_list %}
-                    <option value="{{ faculty.id }}"
-                        {% if faculty.id == cs.faculty_id %}selected{% endif %}>
-                        {{ faculty.name }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- Lecture Slots -->
-            <div>
-                <label class="text-sm text-gray-600">Lecture Slots</label>
-                <input type="number"
-                       name="lecture_slots"
-                       value="{{ cs.lecture_slots_per_week }}"
-                       class="w-full border rounded px-2 py-1">
-            </div>
-
-            <!-- Practical Slots -->
-            <div>
-                <label class="text-sm text-gray-600">Practical Slots</label>
-                <input type="number"
-                       name="practical_slots"
-                       value="{{ cs.practical_slots_per_week }}"
-                       class="w-full border rounded px-2 py-1">
-            </div>
-
-        </div>
-
-        <div class="mt-4 flex justify-end space-x-3">
-
-            <button type="submit"
-                    class="px-4 py-1 bg-blue-600 text-white rounded">
-                Update
-            </button>
-
-            <a href="{{ url_for('delete_class_subject', id=cs.id) }}"
-               onclick="return confirm('Delete this subject?')"
-               class="px-4 py-1 bg-red-600 text-white rounded">
-                Delete
-            </a>
-
-        </div>
-
-    </form>
-</div>
-{% endfor %}
-                {% endfor %}
-                
-                <!-- Summary -->
-                <div class="mt-6 pt-6 border-t border-gray-200">
-                    <h4 class="font-medium text-gray-900 mb-3">Weekly Summary</h4>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="bg-blue-50 p-4 rounded-lg">
-                            <div class="text-sm text-blue-700">Total Lecture Hours</div>
-                            <div class="text-2xl font-bold text-blue-800">
-                                {% set total_lecture = class_subjects|sum(attribute='lecture_slots_per_week') %}
-                                {{ total_lecture }}
+            
+            <div class="p-6 bg-gray-50/30 flex-1">
+                {% if class_subjects %}
+                <div class="space-y-4">
+                    {% for cs in class_subjects %}
+                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200 group relative">
+                        <!-- Background decoration -->
+                        <div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-gray-50 to-transparent rounded-tr-xl -z-10 group-hover:from-blue-50 transition-colors"></div>
+                        
+                        <form method="POST" action="{{ url_for('update_class_subject', id=cs.id) }}">
+                            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white shadow-sm flex-shrink-0
+                                        {% if cs.subject_ref.type == 'Theory' %}bg-blue-500{% elif cs.subject_ref.type == 'Practical' %}bg-green-500{% else %}bg-purple-500{% endif %}">
+                                        <i class="fas {% if cs.subject_ref.type == 'Theory' %}fa-book{% elif cs.subject_ref.type == 'Practical' %}fa-flask{% else %}fa-laptop-code{% endif %}"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold text-gray-900 text-base leading-tight">
+                                            {{ cs.subject_ref.name }}
+                                        </h4>
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <span class="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{{ cs.subject_ref.code }}</span>
+                                            <span class="text-[10px] font-semibold tracking-wider uppercase 
+                                                {% if cs.subject_ref.type == 'Theory' %}text-blue-600{% elif cs.subject_ref.type == 'Practical' %}text-green-600{% else %}text-purple-600{% endif %}">
+                                                {{ cs.subject_ref.type }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-center gap-2 self-end sm:self-start">
+                                    <button type="submit" class="p-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-colors tooltip" title="Save Changes">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                    <a href="{{ url_for('delete_class_subject', id=cs.id) }}" onclick="return confirm('Remove assigned subject {{ cs.subject_ref.name }} from this class?')" 
+                                       class="p-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition-colors tooltip" title="Remove Subject">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </a>
+                                </div>
                             </div>
-                            <div class="text-xs text-blue-600">hours/week</div>
-                        </div>
-                        <div class="bg-green-50 p-4 rounded-lg">
-                            <div class="text-sm text-green-700">Total Practical Hours</div>
-                            <div class="text-2xl font-bold text-green-800">
-                                {% set total_practical = class_subjects|sum(attribute='practical_slots_per_week') * 2 %}
-                                {{ total_practical }}
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 bg-gray-50 rounded-lg p-3 border border-gray-100">
+                                <div class="md:col-span-6">
+                                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Assigned Faculty</label>
+                                    <select name="faculty_id" class="w-full border-gray-300 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm py-1.5">
+                                        {% for faculty in faculty_list %}
+                                        <option value="{{ faculty.id }}" {% if faculty.id == cs.faculty_id %}selected{% endif %}>
+                                            {{ faculty.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="md:col-span-3">
+                                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Lecture</label>
+                                    <div class="relative">
+                                        <input type="number" name="lecture_slots" value="{{ cs.lecture_slots_per_week }}" min="0" max="10"
+                                            class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm py-1.5 pl-3 pr-8 text-center font-medium text-blue-900 bg-white">
+                                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400 text-xs text-blue-600/50">
+                                            <i class="fas fa-chalkboard"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="md:col-span-3">
+                                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Practical</label>
+                                    <div class="relative">
+                                        <input type="number" name="practical_slots" value="{{ cs.practical_slots_per_week }}" min="0" max="10"
+                                            class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500 text-sm py-1.5 pl-3 pr-8 text-center font-medium text-green-900 bg-white">
+                                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400 text-xs text-green-600/50">
+                                            <i class="fas fa-flask"></i>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="text-xs text-green-600">hours/week</div>
-                        </div>
+                        </form>
                     </div>
+                    {% endfor %}
                 </div>
+                {% else %}
+                <div class="flex flex-col items-center justify-center py-16 text-center h-full">
+                    <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                        <i class="fas fa-clipboard-list text-gray-300 text-4xl"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-gray-900 mb-2">No Syllabus Assigned</h4>
+                    <p class="text-sm text-gray-500 max-w-sm">Use the form on the left to map subjects and faculty to this class.</p>
+                </div>
+                {% endif %}
             </div>
-            {% else %}
-            <div class="text-center py-12">
-                <i class="fas fa-book text-gray-300 text-4xl mb-4"></i>
-                <h4 class="text-lg font-medium text-gray-900 mb-2">No Subjects Assigned</h4>
-                <p class="text-gray-600 mb-6">Assign subjects to this class using the form on the left.</p>
-                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <p class="text-sm text-yellow-800">
-                        <i class="fas fa-exclamation-circle mr-2"></i>
-                        Subjects must be assigned before generating timetable.
-                    </p>
-                </div>
+            
+            {% if class_subjects|length > 0 %}
+            <div class="p-6 border-t border-gray-100 bg-white flex justify-end">
+                <a href="{{ url_for('run_timetable_generation', class_id=class_obj.id) }}"
+                   class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-md text-white bg-gradient-to-r from-green-500 to-indigo-600 hover:from-green-600 hover:to-indigo-700 transition-all transform hover:-translate-y-0.5">
+                    <i class="fas fa-magic mr-2"></i> Auto-Generate Timetable
+                </a>
             </div>
             {% endif %}
         </div>
     </div>
-</div>
-
-<!-- Action Buttons -->
-<div class="mt-8 flex justify-between">
-    <a href="{{ url_for('manage_batch_mentors', class_id=class_obj.id) }}"
-       class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">
-        <i class="fas fa-user-tie mr-2"></i>Assign Batch Mentors
-    </a>
-    
-    {% if class_subjects|length > 0 %}
-    <a href="{{ url_for('run_timetable_generation', class_id=class_obj.id) }}"
-       class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
-        <i class="fas fa-cogs mr-2"></i>Generate Timetable
-    </a>
-    {% endif %}
 </div>
 {% endblock %}

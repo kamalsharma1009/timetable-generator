@@ -1,10 +1,13 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, time
 import json
 import os
+import io
+import openpyxl
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 import random
 import copy
 from dotenv import load_dotenv
@@ -19,15 +22,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Timetable settings
 app.config['DAYS'] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 app.config['TIME_SLOTS'] = [
-            ('09:40', '10:40'),
+            ('9:40', '10:40'),
             ('10:40', '11:40'),
             ('11:40', '12:40'),
-            ('12:40', '13:10'),  # Lunch Break
-            ('13:10', '14:10'),
-            ('14:10', '15:10'),
-            ('15:10', '15:20'),  # Short Break
-            ('15:20', '16:20'),
-            ('16:20', '17:20')
+            ('12:40', '1:10'),  # Lunch Break
+            ('1:10', '2:10'),
+            ('2:10', '3:10'),
+            ('3:10', '3:20'),  # Short Break
+            ('3:20', '4:20'),
+            ('4:20', '5:20')
 ]
 app.config['LECTURE_SLOT_INDICES'] = [0, 1, 3, 4, 5, 6]
 app.config['PRACTICAL_SLOTS'] = [('14:00', '16:00'), ('15:00', '17:10')]
@@ -156,12 +159,15 @@ class Timetable(db.Model):
     subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'))
     subject = db.relationship('Subject')
     faculty_id = db.Column(db.Integer, db.ForeignKey('faculty.id'))
+    # faculty_ref backref is set by Faculty.timetable_entries (access via entry.faculty_ref)
     room_id = db.Column(db.Integer, db.ForeignKey('room.id'))
+    # room backref is set by Room.timetable_entries (access via entry.room)
     batch_id = db.Column(db.Integer, db.ForeignKey('batch.id'))
     batch = db.relationship('Batch')
     session_type = db.Column(db.String(20), nullable=False)  # Lecture, Practical, Mentoring, Break
     is_break = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 
 class PracticalSlot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -197,19 +203,29 @@ class GeneticAlgorithmTimetable:
         self.class_id = class_id
         self.class_obj = Class.query.get(class_id)
         self.days = app.config['DAYS']
-        app.config['TIME_SLOTS'] = [
+        self.time_slots = [
             ('09:40', '10:40'),
             ('10:40', '11:40'),
             ('11:40', '12:40'),
-            ('12:40', '13:10'),  # Lunch Break
+            ('12:40', '13:10'),  # Lunch Break  (index 3)
             ('13:10', '14:10'),
             ('14:10', '15:10'),
-            ('15:10', '15:20'),  # Short Break
+            ('15:10', '15:20'),  # Short Break  (index 6)
             ('15:20', '16:20'),
             ('16:20', '17:20')
         ]
+        app.config['TIME_SLOTS'] = self.time_slots
+        # Break slot indices
+        self.BREAK_SLOTS = {3, 6}
+        # All valid (non-break) slot indices for lectures and practicals
+        self.valid_slots = [i for i in range(len(self.time_slots)) if i not in self.BREAK_SLOTS]
+        # Consecutive slot pairs allowed for 2-slot practicals (both slots must be non-break and consecutive)
+        self.practical_pairs = [
+            (s, s+1) for s in self.valid_slots
+            if (s+1) in self.valid_slots and (s+1 - s == 1)
+        ]
         self.lecture_slots = app.config['LECTURE_SLOT_INDICES']
-        
+
         # Get all required data
         self.class_subjects = ClassSubject.query.filter_by(class_id=class_id).all()
         self.batches = Batch.query.filter_by(class_id=class_id).all()
@@ -217,17 +233,14 @@ class GeneticAlgorithmTimetable:
         dept_id = self.class_obj.department_id
 
         self.rooms = Room.query.filter_by(department_id=dept_id).all()
-
         self.classrooms = [r for r in self.rooms if r.room_type == 'Classroom']
         self.labs = [r for r in self.rooms if r.room_type == 'Lab']
-        
+
         if not self.classrooms:
             raise Exception("No classrooms available for this department")
-
         if not self.labs:
             raise Exception("No labs available for this department")
 
-        
         # Initialize population
         self.population = []
         self.best_solution = None
@@ -553,25 +566,42 @@ class GeneticAlgorithmTimetable:
         return individual
     
     def generate_structured_timetable(self):
-
+        """
+        Constraint-compliant timetable generator.
+        Order: Breaks → Practicals (parallel) → Mentoring → Lectures
+        """
+        # ------------------------------------------------------------------
+        # RESET
+        # ------------------------------------------------------------------
         Timetable.query.filter_by(class_id=self.class_id).delete()
         db.session.commit()
 
-        import random
+        days = self.days
+        slots = self.time_slots  # list of (start, end) tuples, len=9
+        n_batches = len(self.batches)
 
-        days = self.days.copy()
-        slots = app.config['TIME_SLOTS']
+        # Busy trackers  key → True
+        faculty_busy = {}   # (faculty_id, day, slot_idx)
+        room_busy    = {}   # (room_id,    day, slot_idx)
+        class_busy   = {}   # (day, slot_idx)  — at most one activity per slot per class
+        
+        # Pre-load busy faculty and rooms from OTHER classes to prevent cross-class conflicts
+        cross_class_entries = Timetable.query.filter(Timetable.class_id != self.class_id).all()
+        for entry in cross_class_entries:
+            if entry.faculty_id:
+                faculty_busy[(entry.faculty_id, entry.day, entry.slot_number)] = True
+            if entry.room_id:
+                room_busy[(entry.room_id, entry.day, entry.slot_number)] = True
 
-        faculty_busy = {}
-        room_busy = {}
-        class_busy = {}
+        # Per-subject per-day lecture count to distribute across days
+        subject_day  = {}   # (subject_id, day) → count
 
-        # ------------------------------------------------
-        # BREAKS
-        # ------------------------------------------------
+        # ------------------------------------------------------------------
+        # STEP 1 — BREAKS
+        # ------------------------------------------------------------------
         for day in days:
             for s, (start, end) in enumerate(slots):
-                if s == 3 or s == 6:
+                if s in self.BREAK_SLOTS:
                     db.session.add(Timetable(
                         class_id=self.class_id,
                         day=day,
@@ -582,86 +612,99 @@ class GeneticAlgorithmTimetable:
                         is_break=True
                     ))
                     class_busy[(day, s)] = True
-
         db.session.commit()
 
-        # ------------------------------------------------
-        # PRACTICALS (BLOCK BASED - DIFFERENT SUBJECT PER BATCH)
-        # ------------------------------------------------
-
-        practical_blocks = [(0,1), (1,2), (4,5), (7,8)]
-
-        # Step 1: Create flat list of required practical sessions
-        practical_sessions = []
-
+        # ------------------------------------------------------------------
+        # STEP 2 — PRACTICALS  (parallel batches, same day+slot block)
+        # ------------------------------------------------------------------
+        # Build list of (class_subject) per practical session needed
+        # Each cs appears practical_slots_per_week times
+        practical_subjects = []   # only subjects with practicals
         for cs in self.class_subjects:
-            for _ in range(cs.practical_slots_per_week):
-                practical_sessions.append(cs)
+            if cs.practical_slots_per_week and cs.practical_slots_per_week > 0:
+                for _ in range(cs.practical_slots_per_week):
+                    practical_subjects.append(cs)
 
-        # Shuffle sessions
-        random.shuffle(practical_sessions)
+        # We need at least n_batches subjects per placement round
+        # Each round consumes n_batches entries (one per batch)
+        # Build rounds: group practical_subjects into sets of n_batches
+        # Each set must have all-different subject_ids AND all-different faculty_ids
+        # Strategy: shuffle and verify uniqueness; retry up to MAX_ROUND_TRIES
+        MAX_ROUND_TRIES = 200
 
-        # Step 2: Schedule in groups of batches
-        index = 0
+        def make_rounds(pool, n):
+            """Split pool into groups of n with unique subject & faculty per group."""
+            rounds = []
+            remaining = list(pool)
+            while len(remaining) >= n:
+                placed = False
+                for _ in range(MAX_ROUND_TRIES):
+                    random.shuffle(remaining)
+                    group = remaining[:n]
+                    subj_ids = [g.subject_id for g in group]
+                    fac_ids  = [g.faculty_id  for g in group]
+                    if len(set(subj_ids)) == n and len(set(fac_ids)) == n:
+                        rounds.append(group)
+                        remaining = remaining[n:]
+                        placed = True
+                        break
+                if not placed:
+                    print(f"⚠ Could not form valid practical group from remaining {len(remaining)} subjects")
+                    break
+            return rounds
 
-        while index < len(practical_sessions):
+        practical_rounds = make_rounds(practical_subjects, n_batches)
 
-            # Take up to number_of_batches subjects
-            group = practical_sessions[index:index+len(self.batches)]
+        if len(self.labs) < n_batches:
+            raise Exception(f"Need at least {n_batches} labs for parallel practicals, found {len(self.labs)}")
 
-            if len(group) < len(self.batches):
-                break  # Not enough subjects left for full parallel block
-
-            random.shuffle(days)
-            random.shuffle(practical_blocks)
-
+        for group in practical_rounds:
             assigned = False
-
-            for day in days:
-
-                for (s1, s2) in practical_blocks:
-
-                    if s1 in [3,6] or s2 in [3,6]:
-                        continue
-
+            day_order = random.sample(days, len(days))
+            for day in day_order:
+                # Try all valid consecutive pairs (morning + afternoon both allowed)
+                pair_order = list(self.practical_pairs)
+                # Prefer afternoon pairs (slot index >= 4) by sorting descending
+                pair_order.sort(key=lambda p: (-p[0]))  # higher index first (afternoon preference)
+                for (s1, s2) in pair_order:
+                    # Both slots in pair must be free for the class
                     if (day, s1) in class_busy or (day, s2) in class_busy:
                         continue
 
-                    if len(self.labs) < len(self.batches):
+                    # Check all batches' faculty are free on both slots
+                    ok = True
+                    for cs in group:
+                        for s in (s1, s2):
+                            if (cs.faculty_id, day, s) in faculty_busy:
+                                ok = False
+                                break
+                        if not ok:
+                            break
+                    if not ok:
                         continue
 
-                    labs_ok = True
-                    faculty_ok = True
+                    # Assign labs (one unique lab per batch)
+                    labs_copy = list(self.labs)
+                    random.shuffle(labs_copy)
+                    lab_assigned = labs_copy[:n_batches]
 
-                    for i, cs in enumerate(group):
-
-                        lab = self.labs[i]
-                        faculty_id = cs.faculty_id
-
-                        # Faculty clash?
-                        if (faculty_id, day, s1) in faculty_busy or \
-                        (faculty_id, day, s2) in faculty_busy:
-                            faculty_ok = False
+                    # Check labs are free
+                    lab_ok = True
+                    for lab in lab_assigned:
+                        for s in (s1, s2):
+                            if (lab.id, day, s) in room_busy:
+                                lab_ok = False
+                                break
+                        if not lab_ok:
                             break
-
-                        # Room clash?
-                        if (lab.id, day, s1) in room_busy or \
-                        (lab.id, day, s2) in room_busy:
-                            labs_ok = False
-                            break
-
-                    if not labs_ok or not faculty_ok:
+                    if not lab_ok:
                         continue
 
-                    # ASSIGN PRACTICAL BLOCK
-                    for i, cs in enumerate(group):
-
-                        batch = self.batches[i]
-                        lab = self.labs[i]
-                        faculty_id = cs.faculty_id
-
-                        for s in [s1, s2]:
-
+                    # All checks passed — commit this practical round
+                    for idx, cs in enumerate(group):
+                        batch = self.batches[idx]
+                        lab   = lab_assigned[idx]
+                        for s in (s1, s2):
                             db.session.add(Timetable(
                                 class_id=self.class_id,
                                 day=day,
@@ -669,46 +712,40 @@ class GeneticAlgorithmTimetable:
                                 start_time=slots[s][0],
                                 end_time=slots[s][1],
                                 subject_id=cs.subject_id,
-                                faculty_id=faculty_id,
+                                faculty_id=cs.faculty_id,
                                 room_id=lab.id,
                                 batch_id=batch.id,
                                 session_type='Practical',
                                 is_break=False
                             ))
-
-                            faculty_busy[(faculty_id, day, s)] = True
+                            faculty_busy[(cs.faculty_id, day, s)] = True
                             room_busy[(lab.id, day, s)] = True
-                            class_busy[(day, s)] = True
+                        # Mark class busy for both slots
+                        class_busy[(day, s1)] = True
+                        class_busy[(day, s2)] = True
 
                     assigned = True
                     break
-
                 if assigned:
                     break
 
-            if assigned:
-                index += len(self.batches)
-            else:
-                print("Could not place practical group safely")
-                break
+            if not assigned:
+                print(f"⚠ Could not place practical round: {[cs.subject_id for cs in group]}")
 
         db.session.commit()
-        # ------------------------------------------------
-        # SINGLE MENTORING PER WEEK
-        # ------------------------------------------------
 
-        mentoring_assigned = False
-        random.shuffle(days)
-
+        # ------------------------------------------------------------------
+        # STEP 3 — MENTORING  (one slot for the whole class, no subject)
+        # ------------------------------------------------------------------
+        mentoring_placed = False
         for day in days:
+            if mentoring_placed:
+                break
             for s, (start, end) in enumerate(slots):
-
-                if s in [3,6]:
+                if s in self.BREAK_SLOTS:
                     continue
-
                 if (day, s) in class_busy:
                     continue
-
                 db.session.add(Timetable(
                     class_id=self.class_id,
                     day=day,
@@ -717,49 +754,53 @@ class GeneticAlgorithmTimetable:
                     end_time=end,
                     session_type='Mentoring',
                     is_break=False
+                    # subject_id and faculty_id intentionally omitted
                 ))
-
                 class_busy[(day, s)] = True
-                mentoring_assigned = True
+                mentoring_placed = True
                 break
-            if mentoring_assigned:
-                break
-
         db.session.commit()
 
-        # ------------------------------------------------
-        # LECTURES (RANDOM SAFE)
-        # ------------------------------------------------
-        lecture_list = []
+        # ------------------------------------------------------------------
+        # STEP 4 — LECTURES  (distributed across days, no clustering)
+        # ------------------------------------------------------------------
+        # Build lecture pool: each cs repeated lecture_slots_per_week times
+        lecture_pool = []
         for cs in self.class_subjects:
             for _ in range(cs.lecture_slots_per_week):
-                lecture_list.append(cs)
+                lecture_pool.append(cs)
+        random.shuffle(lecture_pool)
 
-        random.shuffle(lecture_list)
+        for cs in lecture_pool:
+            assigned = False
+            # Randomise day order; prefer days where this subject hasn't been placed yet
+            def day_sort_key(d):
+                return subject_day.get((cs.subject_id, d), 0)
 
-        for cs in lecture_list:
+            day_order = sorted(random.sample(days, len(days)), key=day_sort_key)
 
-            random.shuffle(days)
-
-            for day in days:
-                for s, (start, end) in enumerate(slots):
-
-                    if s in [3,6]:
-                        continue
-
+            for day in day_order:
+                if assigned:
+                    break
+                
+                # Randomize slot order to avoid clustering all lectures in early slots
+                slot_order = list(self.valid_slots)
+                random.shuffle(slot_order)
+                
+                for s in slot_order:
+                    start, end = slots[s]
                     if (day, s) in class_busy:
                         continue
-
-                    if (cs.faculty_id, day, s) in faculty_busy:
+                    if cs.faculty_id and (cs.faculty_id, day, s) in faculty_busy:
                         continue
 
+                    # Find a free classroom
                     classroom = None
                     for room in self.classrooms:
                         if (room.id, day, s) not in room_busy:
                             classroom = room
                             break
-
-                    if classroom is None:
+                    if not classroom:
                         continue
 
                     db.session.add(Timetable(
@@ -775,104 +816,20 @@ class GeneticAlgorithmTimetable:
                         is_break=False
                     ))
 
-                    faculty_busy[(cs.faculty_id, day, s)] = True
+                    if cs.faculty_id:
+                        faculty_busy[(cs.faculty_id, day, s)] = True
                     room_busy[(classroom.id, day, s)] = True
                     class_busy[(day, s)] = True
+                    subject_day[(cs.subject_id, day)] = subject_day.get((cs.subject_id, day), 0) + 1
 
+                    assigned = True
                     break
-                else:
-                    continue
-                break
 
-        db.session.commit()            
-    def save_to_database(self, solution):
-        """Save generated timetable to database"""
-        # Clear existing timetable for this class
-        Timetable.query.filter_by(class_id=self.class_id).delete()
-        PracticalSlot.query.filter_by(class_id=self.class_id).delete()
-        db.session.commit()
-        
-        # Save lectures
-        for lecture in solution['lectures']:
-            timetable_entry = Timetable(
-                class_id=self.class_id,
-                day=lecture['day'],
-                slot_number=lecture['slot_number'],
-                start_time=lecture['start_time'],
-                end_time=lecture['end_time'],
-                subject_id=lecture['subject_id'],
-                faculty_id=lecture['faculty_id'],
-                room_id=lecture['room_id'],
-                session_type='Lecture',
-                is_break=False
-            )
-            db.session.add(timetable_entry)
-        
-        # Save practicals
-        for practical in solution['practicals']:
-            practical_slot = PracticalSlot(
-                class_id=self.class_id,
-                batch_id=practical['batch_id'],
-                subject_id=practical['subject_id'],
-                faculty_id=practical['faculty_id'],
-                room_id=practical['room_id'],
-                day=practical['day'],
-                start_time=practical['start_time'],
-                end_time=practical['end_time']
-            )
-            db.session.add(practical_slot)
-            
-            # Also add to timetable
-            for slot in [practical['start_slot'], practical['end_slot']]:
-                timetable_entry = Timetable(
-                    class_id=self.class_id,
-                    day=practical['day'],
-                    slot_number=slot,
-                    start_time=self.time_slots[slot][1],
-                    end_time=self.time_slots[slot][2],
-                    subject_id=practical['subject_id'],
-                    faculty_id=practical['faculty_id'],
-                    room_id=practical['room_id'],
-                    batch_id=practical['batch_id'],
-                    session_type='Practical',
-                    is_break=False
-                )
+            if not assigned:
+                print(f"⚠ Could not place lecture for subject {cs.subject_id}")
 
-                db.session.add(timetable_entry)
-        
-        # Save mentoring
-        for mentoring in solution['mentoring']:
-            timetable_entry = Timetable(
-                class_id=self.class_id,
-                day=mentoring['day'],
-                slot_number=mentoring['slot_number'],
-                start_time=mentoring['start_time'],
-                end_time=mentoring['end_time'],
-                faculty_id=mentoring['faculty_id'],
-                room_id=mentoring['room_id'],
-                batch_id=mentoring['batch_id'],
-                session_type='Mentoring',
-                is_break=False
-            )
-            db.session.add(timetable_entry)
-        
-        # Add break slots
-        for day in self.days:
-            # Lunch break
-            lunch_break = Timetable(
-                class_id=self.class_id,
-                day=day,
-                slot_number=2,
-                start_time='11:50',
-                end_time='12:40',
-                session_type='Break',
-                is_break=True
-            )
-            db.session.add(lunch_break)
-        
         db.session.commit()
-        print(f"Timetable saved to database for class {self.class_id}")
-        return True
+        print(f"✅ Timetable generated for class {self.class_id}")
 
 # Routes
 @app.route('/')
@@ -986,10 +943,33 @@ def add_department():
     flash('Department added successfully', 'success')
     return redirect(url_for('manage_departments'))
 
-@app.route('/departments/delete/<int:id>')
+@app.route('/departments/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_department(id):
+    department = Department.query.get_or_404(id)
+    code = request.form.get('code')
+    name = request.form.get('name')
+    description = request.form.get('description')
+    
+    existing = Department.query.filter_by(code=code).first()
+    if existing and existing.id != id:
+        flash('Department code already exists', 'error')
+        return redirect(url_for('manage_departments'))
+        
+    department.code = code
+    department.name = name
+    department.description = description
+    db.session.commit()
+    flash('Department updated successfully', 'success')
+    return redirect(url_for('manage_departments'))
+
+@app.route('/departments/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_department(id):
     department = Department.query.get_or_404(id)
+    if department.classes or department.faculty or Subject.query.filter_by(department_id=id).first() or Room.query.filter_by(department_id=id).first():
+        flash('Cannot delete department: It is assigned to classes, faculty, subjects, or rooms.', 'error')
+        return redirect(url_for('manage_departments'))
     db.session.delete(department)
     db.session.commit()
     flash('Department deleted successfully', 'success')
@@ -1044,6 +1024,49 @@ def add_class():
     flash('Class and batches created successfully', 'success')
     return redirect(url_for('manage_classes'))
 
+@app.route('/classes/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_class(id):
+    class_obj = Class.query.get_or_404(id)
+    name = request.form.get('name')
+    code = request.form.get('code')
+    year = request.form.get('year')
+    department_id = request.form.get('department_id')
+    semester = request.form.get('semester')
+    strength = request.form.get('strength', 60)
+    
+    existing = Class.query.filter_by(code=code).first()
+    if existing and existing.id != id:
+        flash('Class code already exists', 'error')
+        return redirect(url_for('manage_classes'))
+        
+    class_obj.name = name
+    class_obj.code = code
+    class_obj.year = year
+    class_obj.department_id = department_id
+    class_obj.semester = semester
+    class_obj.strength = strength
+    db.session.commit()
+    flash('Class updated successfully', 'success')
+    return redirect(url_for('manage_classes'))
+
+@app.route('/classes/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_class(id):
+    class_obj = Class.query.get_or_404(id)
+    if class_obj.timetable:
+        flash('Cannot delete class: It has an active timetable generated.', 'error')
+        return redirect(url_for('manage_classes'))
+    
+    Batch.query.filter_by(class_id=id).delete()
+    ClassSubject.query.filter_by(class_id=id).delete()
+    PracticalSlot.query.filter_by(class_id=id).delete()
+    db.session.delete(class_obj)
+    db.session.commit()
+    flash('Class and its batches deleted successfully', 'success')
+    return redirect(url_for('manage_classes'))
+
+
 # Subject Management
 @app.route('/subjects')
 @login_required
@@ -1082,6 +1105,47 @@ def add_subject():
     
     flash('Subject added successfully', 'success')
     return redirect(url_for('manage_subjects'))
+
+@app.route('/subjects/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_subject(id):
+    subject = Subject.query.get_or_404(id)
+    code = request.form.get('code')
+    name = request.form.get('name')
+    type = request.form.get('type')
+    lecture_hours = request.form.get('lecture_hours', 0, type=int)
+    practical_hours = request.form.get('practical_hours', 0, type=int)
+    credits = request.form.get('credits', 3, type=int)
+    department_id = request.form.get('department_id')
+    
+    existing = Subject.query.filter_by(code=code).first()
+    if existing and existing.id != id:
+        flash('Subject code already exists', 'error')
+        return redirect(url_for('manage_subjects'))
+        
+    subject.code = code
+    subject.name = name
+    subject.type = type
+    subject.lecture_hours = lecture_hours
+    subject.practical_hours = practical_hours
+    subject.credits = credits
+    subject.department_id = department_id if department_id else None
+    db.session.commit()
+    flash('Subject updated successfully', 'success')
+    return redirect(url_for('manage_subjects'))
+
+@app.route('/subjects/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_subject(id):
+    subject = Subject.query.get_or_404(id)
+    if subject.class_subjects or Timetable.query.filter_by(subject_id=id).first():
+        flash('Cannot delete subject: It is assigned to classes or a timetable.', 'error')
+        return redirect(url_for('manage_subjects'))
+    db.session.delete(subject)
+    db.session.commit()
+    flash('Subject deleted successfully', 'success')
+    return redirect(url_for('manage_subjects'))
+
 
 # Faculty Management
 @app.route('/faculty')
@@ -1126,6 +1190,52 @@ def add_faculty():
     flash('Faculty added successfully', 'success')
     return redirect(url_for('manage_faculty'))
 
+@app.route('/faculty/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_faculty(id):
+    faculty = Faculty.query.get_or_404(id)
+    employee_id = request.form.get('employee_id')
+    name = request.form.get('name')
+    email = request.form.get('email')
+    phone = request.form.get('phone')
+    department_id = request.form.get('department_id')
+    designation = request.form.get('designation')
+    qualification = request.form.get('qualification')
+    
+    existing_emp = Faculty.query.filter_by(employee_id=employee_id).first()
+    if existing_emp and existing_emp.id != id:
+        flash('Employee ID already exists', 'error')
+        return redirect(url_for('manage_faculty'))
+        
+    existing_email = Faculty.query.filter_by(email=email).first()
+    if existing_email and existing_email.id != id:
+        flash('Email already exists', 'error')
+        return redirect(url_for('manage_faculty'))
+        
+    faculty.employee_id = employee_id
+    faculty.name = name
+    faculty.email = email
+    faculty.phone = phone
+    faculty.department_id = department_id if department_id else None
+    faculty.designation = designation
+    faculty.qualification = qualification
+    db.session.commit()
+    flash('Faculty updated successfully', 'success')
+    return redirect(url_for('manage_faculty'))
+
+@app.route('/faculty/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_faculty(id):
+    faculty = Faculty.query.get_or_404(id)
+    if faculty.class_subjects or faculty.mentored_batches or faculty.timetable_entries:
+        flash('Cannot delete faculty: They are assigned to subjects, batches, or a timetable.', 'error')
+        return redirect(url_for('manage_faculty'))
+    db.session.delete(faculty)
+    db.session.commit()
+    flash('Faculty deleted successfully', 'success')
+    return redirect(url_for('manage_faculty'))
+
+
 # Room Management
 @app.route('/rooms')
 @login_required
@@ -1160,6 +1270,43 @@ def add_room():
     
     flash('Room added successfully', 'success')
     return redirect(url_for('manage_rooms'))
+
+@app.route('/rooms/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_room(id):
+    room = Room.query.get_or_404(id)
+    room_number = request.form.get('room_number')
+    room_type = request.form.get('room_type')
+    capacity = request.form.get('capacity', type=int)
+    department_id = request.form.get('department_id')
+    equipment = request.form.get('equipment')
+    
+    existing = Room.query.filter_by(room_number=room_number).first()
+    if existing and existing.id != id:
+        flash('Room number already exists', 'error')
+        return redirect(url_for('manage_rooms'))
+        
+    room.room_number = room_number
+    room.room_type = room_type
+    room.capacity = capacity
+    room.department_id = department_id if department_id else None
+    room.equipment = equipment
+    db.session.commit()
+    flash('Room updated successfully', 'success')
+    return redirect(url_for('manage_rooms'))
+
+@app.route('/rooms/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_room(id):
+    room = Room.query.get_or_404(id)
+    if room.timetable_entries:
+        flash('Cannot delete room: It is used in an active timetable.', 'error')
+        return redirect(url_for('manage_rooms'))
+    db.session.delete(room)
+    db.session.commit()
+    flash('Room deleted successfully', 'success')
+    return redirect(url_for('manage_rooms'))
+
 
 # Class Subjects Assignment
 @app.route('/class-subjects/<int:class_id>')
@@ -1256,7 +1403,7 @@ def assign_batch_mentor():
     mentor_id = request.form.get('mentor_id')
     
     batch = Batch.query.get_or_404(batch_id)
-    batch.mentor_id = mentor_id
+    batch.mentor_id = mentor_id if mentor_id else None
     
     db.session.commit()
     
@@ -1320,19 +1467,214 @@ def view_timetable():
         # Organize by day and slot
         timetable_data = {}
         days = app.config['DAYS']
-        slots = list(range(len(app.config['TIME_SLOTS'])))
-        
-        for day in days:
-            timetable_data[day] = {}
-            for slot in slots:
-                entries = [e for e in timetable_entries if e.day == day and e.slot_number == slot]
-                timetable_data[day][slot] = entries
-    
-    return render_template('timetable.html',
-                         classes=classes,
+        entries = Timetable.query.filter_by(class_id=class_id).all()
+        if entries:
+            # Initialize with empty lists
+            timetable_data = {day: [[] for _ in range(len(app.config['TIME_SLOTS']))] for day in app.config['DAYS']}
+            for entry in entries:
+                timetable_data[entry.day][entry.slot_number].append(entry)
+                
+    return render_template('timetable.html', 
+                         classes=classes, 
                          class_id=class_id,
                          timetable_data=timetable_data,
-                         time_slots=time_slots)
+                         time_slots=app.config['TIME_SLOTS'],
+                         days=app.config['DAYS'])
+
+@app.route('/export_timetable/<int:class_id>')
+@login_required
+def export_timetable(class_id):
+    cls = Class.query.get_or_404(class_id)
+    timetable_entries = Timetable.query.filter_by(class_id=class_id).all()
+    
+    if not timetable_entries:
+        flash('No timetable generated for this class yet.', 'error')
+        return redirect(url_for('view_timetable', class_id=class_id))
+    
+    # Process timetable data exactly like view_timetable does
+    timetable_data = {day: [[] for _ in range(len(app.config['TIME_SLOTS']))] for day in app.config['DAYS']}
+    for entry in timetable_entries:
+        timetable_data[entry.day][entry.slot_number].append(entry)
+        
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Timetable"
+    
+    # Styles
+    bold_font = Font(bold=True)
+    title_font = Font(bold=True, size=16)
+    subtitle_font = Font(bold=True, size=12)
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    border_side = Side(border_style="thin", color="000000")
+    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+    heavy_side = Side(border_style="medium", color="000000")
+    heavy_border = Border(left=heavy_side, right=heavy_side, top=heavy_side, bottom=heavy_side)
+    gray_fill = PatternFill(start_color="D1D5DB", end_color="D1D5DB", fill_type="solid")
+    
+    # Set Column Widths
+    ws.column_dimensions['A'].width = 20  # Time
+    for col in ['B', 'C', 'D', 'E', 'F', 'G']:
+        ws.column_dimensions[col].width = 25
+        
+    current_row = 1
+    
+    # Headers
+    ws.merge_cells(f'A{current_row}:G{current_row}')
+    cell = ws.cell(row=current_row, column=1)
+    cell.value = "DKTE SOCIETY'S"
+    cell.font = bold_font
+    cell.alignment = center_align
+    current_row += 1
+    
+    ws.merge_cells(f'A{current_row}:G{current_row}')
+    cell = ws.cell(row=current_row, column=1)
+    cell.value = "YASHWANTRAO CHAVAN POLYTECHNIC, ICHALKARANJI"
+    cell.font = title_font
+    cell.alignment = center_align
+    current_row += 1
+    
+    ws.merge_cells(f'A{current_row}:G{current_row}')
+    cell = ws.cell(row=current_row, column=1)
+    cell.value = f"DEPARTMENT OF {cls.department.name.upper()}"
+    cell.font = subtitle_font
+    cell.alignment = center_align
+    current_row += 2
+    
+    # Subheader row
+    ws.merge_cells(f'D{current_row}:E{current_row}')
+    cell = ws.cell(row=current_row, column=4)
+    cell.value = "TIME TABLE 2025-26"
+    cell.font = bold_font
+    cell.alignment = center_align
+    
+    ws.merge_cells(f'F{current_row}:G{current_row}')
+    cell = ws.cell(row=current_row, column=6)
+    cell.value = f"CLASS: {cls.code}"
+    cell.font = bold_font
+    cell.alignment = center_align
+    current_row += 1
+    
+    # Table Headers
+    headers = ["TIME", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
+    for col_idx, header_text in enumerate(headers, 1):
+        cell = ws.cell(row=current_row, column=col_idx)
+        cell.value = header_text
+        cell.font = bold_font
+        cell.alignment = center_align
+        cell.border = heavy_border
+    current_row += 1
+    
+    # Table rows
+    time_slots = app.config['TIME_SLOTS']
+    for slot_idx in range(len(time_slots)):
+        is_break = False
+        try:
+            if timetable_data['Monday'][slot_idx] and timetable_data['Monday'][slot_idx][0].is_break:
+                is_break = True
+        except:
+            pass
+            
+        # Write Time Column
+        time_str = f"{time_slots[slot_idx][0]} TO {time_slots[slot_idx][1]}"
+        cell = ws.cell(row=current_row, column=1)
+        cell.value = time_str
+        cell.font = bold_font
+        cell.alignment = center_align
+        cell.border = thin_border
+        
+        if is_break:
+            ws.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=6)
+            break_cell = ws.cell(row=current_row, column=2)
+            break_cell.value = "LUNCH BREAK" if slot_idx == 3 else "SHORT BREAK"
+            break_cell.font = bold_font
+            break_cell.alignment = center_align
+            break_cell.fill = gray_fill
+            for c in range(2, 7):
+                ws.cell(row=current_row, column=c).border = thin_border
+            
+            sat_cell = ws.cell(row=current_row, column=7)
+            sat_cell.border = thin_border
+            sat_cell.fill = gray_fill
+        else:
+            for day_idx, day in enumerate(app.config['DAYS'], 2):
+                cell = ws.cell(row=current_row, column=day_idx)
+                cell.border = thin_border
+                cell.alignment = center_align
+                entries = timetable_data[day][slot_idx]
+                if entries:
+                    if entries[0].session_type == 'Mentoring':
+                        cell.value = "MENTORING"
+                        cell.font = bold_font
+                    elif entries[0].session_type == 'Lecture':
+                        subject_code = entries[0].subject.code
+                        faculty_name = entries[0].faculty_ref.name if entries[0].faculty_ref else ""
+                        room_number = entries[0].room.room_number if entries[0].room_id else ""
+                        cell.value = f"{subject_code}\n({faculty_name})\n({room_number})"
+                    elif entries[0].session_type == 'Practical':
+                        parts = []
+                        for entry in entries:
+                            fac_code = entry.room.room_number if entry.room_id else ""
+                            parts.append(f"{entry.subject.code}-{entry.batch.name} ({fac_code})")
+                        cell.value = "\n".join(parts)
+            
+            sat_cell = ws.cell(row=current_row, column=7)
+            sat_cell.border = thin_border
+        
+        ws.row_dimensions[current_row].height = 40
+        current_row += 1
+        
+    current_row += 2
+    subject_headers = ["SUBJECT", "FACULTY", "SUBJECT", "FACULTY"]
+    for col_idx, header_text in enumerate(subject_headers, 1):
+        cell = ws.cell(row=current_row, column=col_idx)
+        cell.value = header_text
+        cell.font = bold_font
+        cell.alignment = center_align
+        cell.border = thin_border
+    current_row += 1
+    
+    unique_subjects = list({cs.subject_id: cs for cs in cls.subjects}.values())
+    batches_of_two = [unique_subjects[i:i + 2] for i in range(0, len(unique_subjects), 2)]
+    
+    for row in batches_of_two:
+        c1 = ws.cell(row=current_row, column=1)
+        c1.value = row[0].subject_ref.name if len(row) > 0 else ""
+        c1.alignment = left_align
+        c1.border = thin_border
+        
+        c2 = ws.cell(row=current_row, column=2)
+        c2.value = row[0].faculty_ref.name if len(row) > 0 and row[0].faculty_ref else ""
+        c2.alignment = left_align
+        c2.border = thin_border
+        
+        c3 = ws.cell(row=current_row, column=3)
+        c3.value = row[1].subject_ref.name if len(row) > 1 else ""
+        c3.alignment = left_align
+        c3.border = thin_border
+        
+        c4 = ws.cell(row=current_row, column=4)
+        c4.value = row[1].faculty_ref.name if len(row) > 1 and row[1].faculty_ref else ""
+        c4.alignment = left_align
+        c4.border = thin_border
+        
+        current_row += 1
+        
+    current_row += 3
+    sigs = ["Time Table Incharge", "HOD", "Vice-Principal", "Principal"]
+    for i, sig in enumerate(sigs):
+        col = (i * 2) + 1
+        if col > 7: col = 7
+        cell = ws.cell(row=current_row, column=col)
+        cell.value = sig
+        cell.font = bold_font
+        
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    
+    filename = f"Timetable_{cls.code}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(out, download_name=filename, as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 # Initialize Sample Data
 @app.route('/init-sample-data')
@@ -1348,76 +1690,95 @@ def init_sample_data():
     db.session.query(Subject).delete()
     db.session.query(Room).delete()
     db.session.query(Department).delete()
-    
-    # Create departments
-    dept1 = Department(code='CSE', name='Computer Engineering', description='Computer Science and Engineering Department')
-    dept2 = Department(code='MECH', name='Mechanical Engineering', description='Mechanical Engineering Department')
-    dept3 = Department(code='ENTC', name='Electronics & Telecommunication', description='ENTC Department')
-    db.session.add_all([dept1, dept2, dept3])
+
+    # ------------------------------------------------------------------
+    # Departments
+    # ------------------------------------------------------------------
+    dept1 = Department(code='CSE', name='Computer Engineering',
+                       description='Computer Science and Engineering Department')
+    dept2 = Department(code='MECH', name='Mechanical Engineering',
+                       description='Mechanical Engineering Department')
+    db.session.add_all([dept1, dept2])
     db.session.commit()
-    
-    # Create faculty
-    faculty1 = Faculty(employee_id='F001', name='Dr. Rajesh Kumar', email='rajesh@college.edu', 
-                      phone='9876543210', department_id=dept1.id, designation='Professor',
-                      qualification='Ph.D. in Computer Science')
-    faculty2 = Faculty(employee_id='F002', name='Prof. Sunita Sharma', email='sunita@college.edu',
-                      phone='9876543211', department_id=dept1.id, designation='Associate Professor',
-                      qualification='M.Tech in CSE')
-    faculty3 = Faculty(employee_id='F003', name='Dr. Amit Patel', email='amit@college.edu',
-                      phone='9876543212', department_id=dept2.id, designation='Professor',
-                      qualification='Ph.D. in Mechanical Engineering')
+
+    # ------------------------------------------------------------------
+    # Faculty  (3 unique faculty for CSE — one per batch practical)
+    # ------------------------------------------------------------------
+    faculty1 = Faculty(employee_id='F001', name='S.S. Mali',
+                       email='mali@college.edu', phone='9876543210',
+                       department_id=dept1.id, designation='Professor',
+                       qualification='Ph.D. Computer Science')
+    faculty2 = Faculty(employee_id='F002', name='P.N. Patil',
+                       email='patil@college.edu', phone='9876543211',
+                       department_id=dept1.id, designation='Associate Professor',
+                       qualification='M.Tech CSE')
+    faculty3 = Faculty(employee_id='F003', name='S.N. Kumbhar',
+                       email='kumbhar@college.edu', phone='9876543212',
+                       department_id=dept1.id, designation='Assistant Professor',
+                       qualification='M.Tech CSE')
     db.session.add_all([faculty1, faculty2, faculty3])
     db.session.commit()
-    
-    # Create rooms
-    room1 = Room(room_number='A-101', room_type='Classroom', capacity=60, department_id=dept1.id)
-    room2 = Room(room_number='A-102', room_type='Classroom', capacity=60, department_id=dept1.id)
-    room3 = Room(room_number='LAB-1', room_type='Lab', capacity=40, department_id=dept1.id, 
-                equipment='40 Computers, Projector')
-    room4 = Room(room_number='B-201', room_type='Classroom', capacity=60, department_id=dept2.id)
-    room5 = Room(room_number='LAB-2', room_type='Lab', capacity=30, department_id=dept2.id,
-                equipment='CNC Machines, Lathes')
-    db.session.add_all([room1, room2, room3, room4, room5])
+
+    # ------------------------------------------------------------------
+    # Rooms — 2 classrooms + 3 labs (one lab per batch for parallel practicals)
+    # ------------------------------------------------------------------
+    room_cr1 = Room(room_number='A-101', room_type='Classroom', capacity=60, department_id=dept1.id)
+    room_cr2 = Room(room_number='A-102', room_type='Classroom', capacity=60, department_id=dept1.id)
+    room_lab1 = Room(room_number='LAB-1', room_type='Lab', capacity=30, department_id=dept1.id,
+                     equipment='30 Computers, Projector')
+    room_lab2 = Room(room_number='LAB-2', room_type='Lab', capacity=30, department_id=dept1.id,
+                     equipment='30 Computers, Projector')
+    room_lab3 = Room(room_number='LAB-3', room_type='Lab', capacity=30, department_id=dept1.id,
+                     equipment='30 Computers, Projector')
+    db.session.add_all([room_cr1, room_cr2, room_lab1, room_lab2, room_lab3])
     db.session.commit()
-    
-    # Create subjects
-    sub1 = Subject(code='CSE101', name='Programming Fundamentals', type='Theory', 
-                  lecture_hours=3, practical_hours=2, credits=4, department_id=dept1.id)
-    sub2 = Subject(code='CSE102', name='Data Structures', type='Theory',
-                  lecture_hours=3, practical_hours=2, credits=4, department_id=dept1.id)
-    sub3 = Subject(code='CSE103', name='Database Management', type='Theory',
-                  lecture_hours=3, practical_hours=2, credits=4, department_id=dept1.id)
-    sub4 = Subject(code='MAT101', name='Engineering Mathematics', type='Theory',
-                  lecture_hours=4, practical_hours=0, credits=3)
-    db.session.add_all([sub1, sub2, sub3, sub4])
+
+    # ------------------------------------------------------------------
+    # Subjects — 3 with practicals (one per batch), 1 theory-only
+    # ------------------------------------------------------------------
+    sub_os  = Subject(code='OSY',  name='Operating System',            type='Theory',
+                      lecture_hours=3, practical_hours=2, credits=4, department_id=dept1.id)
+    sub_ste = Subject(code='STE',  name='Software Testing',            type='Theory',
+                      lecture_hours=3, practical_hours=2, credits=4, department_id=dept1.id)
+    sub_dan = Subject(code='DAN',  name='Data Analytics',              type='Theory',
+                      lecture_hours=3, practical_hours=2, credits=4, department_id=dept1.id)
+    sub_ede = Subject(code='EDE',  name='Entrepreneurship Development', type='Theory',
+                      lecture_hours=3, practical_hours=0, credits=3, department_id=dept1.id)
+    db.session.add_all([sub_os, sub_ste, sub_dan, sub_ede])
     db.session.commit()
-    
-    # Create class
-    class1 = Class(name='Computer Engineering', code='CO-1', year='FY', 
-                  department_id=dept1.id, semester=1, strength=60)
+
+    # ------------------------------------------------------------------
+    # Class  TYCW-A (matching the reference timetable image)
+    # ------------------------------------------------------------------
+    class1 = Class(name='Third Year Computer Engineering A',
+                   code='TYCW-A', year='TY',
+                   department_id=dept1.id, semester=5, strength=60)
     db.session.add(class1)
     db.session.flush()
-    
-    # Create batches
-    for i in range(1, 4):
-        batch = Batch(name=f'TB{i}', code=f'CO-1_TB{i}', class_id=class1.id, mentor_id=faculty1.id if i == 1 else faculty2.id if i == 2 else faculty3.id)
-        db.session.add(batch)
-    
+
+    # Create 3 batches TB1, TB2, TB3
+    batch1 = Batch(name='TB1', code='TYCW-A_TB1', class_id=class1.id, mentor_id=faculty1.id)
+    batch2 = Batch(name='TB2', code='TYCW-A_TB2', class_id=class1.id, mentor_id=faculty2.id)
+    batch3 = Batch(name='TB3', code='TYCW-A_TB3', class_id=class1.id, mentor_id=faculty3.id)
+    db.session.add_all([batch1, batch2, batch3])
     db.session.commit()
-    
-    # Assign subjects to class
-    cs1 = ClassSubject(class_id=class1.id, subject_id=sub1.id, faculty_id=faculty1.id,
-                      lecture_slots_per_week=3, practical_slots_per_week=2)
-    cs2 = ClassSubject(class_id=class1.id, subject_id=sub2.id, faculty_id=faculty2.id,
-                      lecture_slots_per_week=3, practical_slots_per_week=2)
-    cs3 = ClassSubject(class_id=class1.id, subject_id=sub3.id, faculty_id=faculty1.id,
-                      lecture_slots_per_week=3, practical_slots_per_week=2)
-    cs4 = ClassSubject(class_id=class1.id, subject_id=sub4.id, faculty_id=faculty3.id,
-                      lecture_slots_per_week=4, practical_slots_per_week=0)
-    db.session.add_all([cs1, cs2, cs3, cs4])
+
+    # ------------------------------------------------------------------
+    # Assign subjects to class  (3 subjects with practicals, 1 without)
+    # Each practical subject has a DIFFERENT faculty — required for parallel scheduling
+    # ------------------------------------------------------------------
+    cs_os  = ClassSubject(class_id=class1.id, subject_id=sub_os.id,  faculty_id=faculty1.id,
+                          lecture_slots_per_week=3, practical_slots_per_week=1)
+    cs_ste = ClassSubject(class_id=class1.id, subject_id=sub_ste.id, faculty_id=faculty2.id,
+                          lecture_slots_per_week=3, practical_slots_per_week=1)
+    cs_dan = ClassSubject(class_id=class1.id, subject_id=sub_dan.id, faculty_id=faculty3.id,
+                          lecture_slots_per_week=3, practical_slots_per_week=1)
+    cs_ede = ClassSubject(class_id=class1.id, subject_id=sub_ede.id, faculty_id=faculty1.id,
+                          lecture_slots_per_week=3, practical_slots_per_week=0)
+    db.session.add_all([cs_os, cs_ste, cs_dan, cs_ede])
     db.session.commit()
-    
-    flash('Sample data initialized successfully!', 'success')
+
+    flash('Sample data initialized successfully! Class: TYCW-A | Subjects: OSY, STE, DAN, EDE', 'success')
     return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
