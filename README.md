@@ -1,4 +1,4 @@
-# AI-Powered Timetable Generator
+# EduSync: Intelligent Timetable Generator
 
 A modern, robust web application built to automatically generate clash-free academic timetables using a powerful Genetic Algorithm. Designed specifically to adhere to the formatting and complex rules of **DKTE Society's Yashwantrao Chavan Polytechnic**, this system allows administrators to manage departments, faculties, subjects, and rooms while completely automating the scheduling process.
 
